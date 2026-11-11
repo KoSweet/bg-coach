@@ -21,8 +21,7 @@ import tkinter as tk
 import urllib.request
 import webbrowser
 
-from .paths import FONT, MONO
-from .version import DATA
+from .paths import DATA, FONT, MONO
 
 POS_FILE = DATA / "overlay_pos.json"
 GREEN, RED, GREY, AMBER = "#45c07a", "#e5534b", "#7a8090", "#e0a23a"
@@ -33,11 +32,25 @@ TYPE_COLOR = {"BUY": "#5aa2f0", "SELL": "#e5534b", "LEVEL": "#e0a23a", "REFRESH"
 FEED_ROWS = 10
 
 
-def _stream(url: str, out: queue.Queue):
-    """Read the app's server-sent events forever (reconnects)."""
+ORPHAN_AFTER_S = 60  # app gone this long → close (an overlay started by an app that has quit or crashed)
+
+
+def _stream(url: str, out: queue.Queue, app_pid: int | None = None):
+    """Read the app's server-sent events forever (reconnects).
+
+    With `app_pid` (the app that started this overlay), stop with `_orphan` when that app is gone:
+    another app instance answering on the port, or nobody answering for ORPHAN_AFTER_S seconds.
+    Without it (`bgcoach overlay`), keep reconnecting forever.
+    """
+    last_seen = time.monotonic()
     while True:
         try:
             with urllib.request.urlopen(url, timeout=60) as r:
+                pid = r.headers.get("X-BGCoach-PID")
+                if app_pid and pid and pid != str(app_pid):
+                    out.put(("_orphan", {}))
+                    return
+                last_seen = time.monotonic()
                 out.put(("_connected", {}))
                 kind = None
                 for raw in r:
@@ -49,13 +62,17 @@ def _stream(url: str, out: queue.Queue):
                             out.put((kind, json.loads(line[6:])))
                         except ValueError:
                             pass
-        except Exception:  # noqa: BLE001
+        except Exception:
             out.put(("_disconnected", {}))
-            time.sleep(3)
+        if app_pid and time.monotonic() - last_seen > ORPHAN_AFTER_S:
+            out.put(("_orphan", {}))
+            return
+        time.sleep(3)
 
 
 class Overlay:
-    def __init__(self, port: int = 8765):
+    def __init__(self, port: int = 8765, app_pid: int | None = None):
+        self.app_pid = app_pid
         self.base = f"http://127.0.0.1:{port}/"
         self.q: queue.Queue = queue.Queue()
         self.ok = self.failed = 0
@@ -120,14 +137,15 @@ class Overlay:
         for w in (root, outer, top, self.title, self.stats, self.checks, self.dot):
             self._bind_window(w)
         self._apply_mode()
-        threading.Thread(target=_stream, args=(self.base + "api/live/events", self.q), daemon=True).start()
+        threading.Thread(target=_stream, args=(self.base + "api/live/events", self.q, self.app_pid),
+                         daemon=True).start()
         root.after(150, self._pump)
         root.after(2000, self._keep_on_top)
 
     def _quit_app(self):
         try:
             urllib.request.urlopen(urllib.request.Request(self.base + "api/quit", data=b"{}", method="POST"), timeout=3)
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
         self.root.destroy()
 
@@ -164,7 +182,7 @@ class Overlay:
     def _load_compact(self) -> bool:
         try:
             return bool(json.loads(POS_FILE.read_text(encoding="utf-8")).get("compact", True))
-        except Exception:  # noqa: BLE001
+        except Exception:
             return True
 
     def _load_pos(self):
@@ -175,14 +193,14 @@ class Overlay:
         try:
             p = json.loads(POS_FILE.read_text(encoding="utf-8"))
             return int(p["x"]), int(p["y"])
-        except Exception:  # noqa: BLE001
+        except Exception:
             return 20, 200
 
     def _save_pos(self):
         try:
             POS_FILE.write_text(json.dumps({"x": self.root.winfo_x(), "y": self.root.winfo_y(),
                                             "compact": getattr(self, "compact", True)}), encoding="utf-8")
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
 
     def _start_drag(self, e):
@@ -221,7 +239,7 @@ class Overlay:
         try:
             with urllib.request.urlopen(f"{self.base}api/card/circle32/{card_id}", timeout=20) as r:
                 self.q.put(("_img", {"id": card_id, "data": base64.b64encode(r.read()).decode()}))
-        except Exception:  # noqa: BLE001
+        except Exception:
             self.q.put(("_img", {"id": card_id, "data": None}))
 
     def _got_image(self, card_id: str, data: str | None):
@@ -284,6 +302,16 @@ class Overlay:
             row.pack(fill="x")
             self._image(opt, art)
             self.advice_rows.append(row)
+        notes = []
+        if d.get("close"):
+            notes.append(f"≈ {self.n(best)} vs {self.n(d['close'])}: too close to call, pick for your board")
+        if d.get("tempo"):
+            tp = d["tempo"]
+            notes.append(f"♥ {tp['hp']} HP: {self.n(tp['card'])} adds more now (+{tp['more']} stats)")
+        for txt in notes:
+            lbl = tk.Label(self.advice, text=txt, fg=MUTED, bg="#1f1a10", font=(FONT, 8), wraplength=250, justify="left")
+            lbl.pack(anchor="w")
+            self.advice_rows.append(lbl)
         if not self.advice.winfo_ismapped():
             self.advice.pack(fill="x", pady=(4, 0), before=self.feed)
         if self.compact:  # pop open while you choose, shrink back after
@@ -352,6 +380,8 @@ class Overlay:
         elif kind == "_disconnected":
             self.connected = False
             self.title.config(text="bg-coach · app not running")
+        elif kind == "_orphan":  # the app that opened this overlay has quit or crashed
+            self.root.after(0, self.root.destroy)  # after this pump pass, so nothing touches a dead window
         elif kind == "status":
             self.in_game = bool(d.get("in_game"))
             snap = d.get("snapshot") or {}
@@ -376,7 +406,7 @@ class Overlay:
             self._show_offers(d)
         elif kind == "summary":
             s_ = d.get("strength") or {}
-            pct = lambda v: f"{v:.0%}" if v is not None else "?"  # noqa: E731
+            pct = lambda v: f"{v:.0%}" if v is not None else "?"
             self._add_row("GAME", AMBER, f"#{d.get('placement')} · board {pct(s_.get('mid'))} mid · {pct(s_.get('late'))} late")
             hl = d.get("hero_loss")
             if hl is not None:
@@ -440,10 +470,10 @@ class Overlay:
         self.root.mainloop()
 
 
-def main(port: int = 8765):
-    Overlay(port).run()
+def main(port: int = 8765, app_pid: int | None = None):
+    Overlay(port, app_pid).run()
 
 
 if __name__ == "__main__":
     import sys
-    main(int(sys.argv[1]) if len(sys.argv) > 1 else 8765)
+    main(int(sys.argv[1]) if len(sys.argv) > 1 else 8765, int(sys.argv[2]) if len(sys.argv) > 2 else None)

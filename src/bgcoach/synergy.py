@@ -94,12 +94,10 @@ def history_until(g: dict, rnd: int, before_line: int | None = None) -> dict:
                 spells += 1
             elif a["type"] == "CHOICE" and a.get("kind") in ("DISCOVER", "TRIPLE_DISCOVER", "DARK_GIFT_PICK"):
                 discovers += 1
-            elif a["type"] == "CHOICE" and a.get("kind") == "TRIPLE_DISCOVER":
-                goldens += 1
+                goldens += a.get("kind") == "TRIPLE_DISCOVER"  # each triple reward = one golden made
         if t["round"] == rnd and before_line is None:
             break
-    golden_now = 0
-    return {"spells_on_minions": spells, "discovers": discovers, "goldens": goldens + golden_now}
+    return {"spells_on_minions": spells, "discovers": discovers, "goldens": goldens}
 
 
 GENERIC_THEMES = {"spell", "gold"}          # Tavern spells / gold exist in every game for everyone

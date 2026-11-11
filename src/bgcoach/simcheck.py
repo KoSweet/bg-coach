@@ -43,7 +43,7 @@ def main(argv=None):
     fights = collect(a.logs)
     print(f"fights with Bob's Buddy odds and both boards: {len(fights)}")
     battles = {}
-    for i, (g, c, bb) in enumerate(fights):
+    for i, (g, c, _bb) in enumerate(fights):
         tier = next((t.get("tier") for t in g["turns"] if t["round"] == c["round"]), 3) or 3
         battles[str(i)] = combat_sim.build_battle(c, g["hero"], tier, sims=a.sims)
     res = combat_sim.simulate(battles)

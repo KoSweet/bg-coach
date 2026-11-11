@@ -1,1 +1,3 @@
-"""bg-coach: personal Hearthstone Battlegrounds post-game analysis."""
+"""bg-coach: a personal Hearthstone Battlegrounds coach (live overlay, post-game decisions, stats)."""
+
+__version__ = "0.2.0"

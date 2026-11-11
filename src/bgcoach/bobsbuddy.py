@@ -11,14 +11,10 @@ from __future__ import annotations
 import datetime as dt
 import gzip
 import json
-import os
 import re
 from functools import lru_cache
-from pathlib import Path
 
-from .version import DATA
-
-from .paths import HDT_DIR  # noqa: E402
+from .paths import DATA, HDT_DIR
 
 HDT_LOGS = HDT_DIR / "Logs" if HDT_DIR else None  # Windows + HDT only (no odds elsewhere)
 ARCHIVE = DATA / "raw" / "hdt" / "logs"
@@ -59,7 +55,7 @@ def _sources() -> list[tuple[str, list[str], dt.datetime]]:
         name = f.name[:-3]
         orig = next((v for k, v in manifest.items() if k.endswith("\\" + name) or k.endswith("/" + name)), None)
         mtime = dt.datetime.fromtimestamp(orig["sig"][1]) if orig else dt.datetime.fromtimestamp(f.stat().st_mtime)
-        srcs[name] = (gzip.open(f, "rt", encoding="utf-8", errors="replace").read().splitlines(), mtime)
+        srcs[name] = (gzip.decompress(f.read_bytes()).decode("utf-8", "replace").splitlines(), mtime)
     if HDT_LOGS is not None and HDT_LOGS.exists():
         for f in HDT_LOGS.glob("*.txt"):  # live files win (newest content)
             try:

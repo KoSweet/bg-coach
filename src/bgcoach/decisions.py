@@ -3,7 +3,9 @@
 For every BUY we rebuild the shop exactly as it was when you clicked, keep only what you could
 afford, and score each card by how players at your MMR do when they play that card on that same
 round (Firestone card stats). Synergy matters, so each option also gets a tribe-fit note: an
-alternative that doesn't fit your board isn't recommended over one that does.
+alternative that doesn't fit your board isn't recommended over one that does. An alternative is
+only reported when it is clearly better (beyond the statistics' noise) and, at low HP, adds at
+least as much to your board right now: the shared rules are in advice.py.
 
 Also: costly fights (big HP loss with a weak board, and what that turn looked like) and level-ups
 judged with the HP and board you had at that moment.
@@ -15,12 +17,12 @@ from __future__ import annotations
 
 from collections import Counter
 
-from . import meta
+from . import advice, meta
 from . import version as V
 
 MINION_COST = 3
-MIN_GAMES = 150          # ignore card/turn stats with fewer games than this
-FLAG_DIFF = 0.25         # report a buy when an affordable option was this much better
+MIN_GAMES = 150              # ignore card/turn stats with fewer games than this
+FLAG_DIFF = advice.MIN_DIFF  # smallest difference worth reporting (and it must also beat the noise)
 
 
 def _tribes(card: dict) -> list[str]:
@@ -61,6 +63,7 @@ def buy_decisions(g: dict, bracket: int) -> list[dict]:
     out = []
     for t in g.get("turns") or []:
         rnd = t["round"]
+        hp = (t["hp"] + (t.get("armor") or 0)) if t.get("hp") is not None else None
         shop = [c["card_id"] for c in t.get("shop") or []]
         board = list(t.get("board") or [])
         acts = t.get("actions") or []
@@ -82,36 +85,41 @@ def buy_decisions(g: dict, bracket: int) -> list[dict]:
                         and gold - cost_b < _cost(c, db) and c not in bought_this_turn]
                 if bought in shop:
                     shop.remove(bought)
-                v_b = cm.at_turn(bought, rnd, MIN_GAMES)
-                if v_b is None or not alts:
+                s_b = cm.stat(bought, rnd, MIN_GAMES)
+                if s_b is None or not alts:
                     continue
                 from . import synergy
                 ctx = synergy.context([m["card_id"] for m in board], synergy.history_until(g, rnd, a.get("line")))
                 lvl_b, why_b = synergy.fit(bought, ctx)
                 scored = []
-                for c in alts:
-                    v = cm.at_turn(c, rnd, MIN_GAMES)
-                    if v is None:
+                for c in alts:  # the advice rules (advice.py): fit, survival, then evidence
+                    s = cm.stat(c, rnd, MIN_GAMES)
+                    if s is None:
                         continue
                     lvl_c, why_c = synergy.fit(c, ctx)
                     if lvl_c < lvl_b or lvl_c == 0:
                         continue  # never suggest a card that fits worse, or one off your build
-                    scored.append((v, c, why_c))
+                    if not advice.survives(bought, c, hp, db):
+                        continue  # at low HP, never trade board strength now for a better average
+                    scored.append((s.avg, c, why_c, s))
                 if not scored:
                     continue
-                v_best, best, why_best = min(scored)
-                diff = round(v_b - v_best, 2)
-                if diff >= FLAG_DIFF:
-                    out.append({
-                        "kind": "buy", "round": rnd, "gold": gold, "line": a.get("line"),
-                        "you": bought, "you_val": round(v_b, 2), "you_fit": why_b,
-                        "better": best, "better_val": round(v_best, 2), "better_fit": why_best,
-                        "diff": diff, "shop": [c for c in alts] + [bought],
-                        "values": {c: (round(v, 2) if (v := cm.at_turn(c, rnd, MIN_GAMES)) is not None else None)
-                                   for c in alts + [bought]},
-                        "calc": f"Played on round {rnd} at your MMR: {db.name(bought)} → average place {v_b:.2f}; "
-                                f"{db.name(best)} → {v_best:.2f}. Difference {diff:+.2f} places.",
-                    })
+                _, best, why_best, s_best = min(scored)
+                if not advice.clearly_better(s_b, s_best):
+                    continue
+                low = (f" You had {hp} HP, so only cards adding at least as much to your board right now "
+                       f"were compared." if advice.low_hp(hp) else "")
+                out.append({
+                    "kind": "buy", "round": rnd, "gold": gold, "line": a.get("line"), "hp": hp,
+                    "you": bought, "you_val": round(s_b.avg, 2), "you_fit": why_b, "you_n": s_b.n,
+                    "better": best, "better_val": round(s_best.avg, 2), "better_fit": why_best, "better_n": s_best.n,
+                    "diff": round(s_b.avg - s_best.avg, 2), "noise": round(advice.noise(s_b, s_best), 2),
+                    "shop": [*alts, bought],
+                    "values": {c: (round(v, 2) if (v := cm.at_turn(c, rnd, MIN_GAMES)) is not None else None)
+                               for c in [*alts, bought]},
+                    "calc": f"Played on round {rnd} at your MMR: {db.name(bought)} → average place {s_b.avg:.2f}; "
+                            f"{db.name(best)} → {s_best.avg:.2f}: {advice.explain(s_b, s_best)}.{low}",
+                })
     return out
 
 
@@ -178,7 +186,7 @@ def with_simulation(g: dict, ds: list[dict]) -> list[dict]:
     try:
         from .whatif import load
         sim = load(g["file"]) if g.get("file") else None
-    except Exception:  # noqa: BLE001
+    except Exception:
         sim = None
     if not sim:
         return ds

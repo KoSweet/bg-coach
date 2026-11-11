@@ -1,0 +1,22 @@
+name: Idea / feature request
+description: Something that would help you play better
+labels: [enhancement]
+body:
+  - type: textarea
+    id: moment
+    attributes:
+      label: Which decision or moment should it help with?
+      description: A concrete game situation works best ("round 5, two Discovers, I couldn't tell which fits my Undead build").
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like bg-coach to show or do?
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: What data could back it up?
+      description: The log, Bob's Buddy, public stats, the simulator… Advice without evidence isn't added.

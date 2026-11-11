@@ -11,7 +11,7 @@ import datetime as dt
 import statistics as st
 import sys
 
-from . import analysis, meta, pipeline
+from . import analysis, pipeline
 from . import version as V
 
 
@@ -42,10 +42,10 @@ def main(argv: list[str] | None = None):
     rep = analysis.improve_report(mine)
     b = rep["bracket"]
     db = V.card_db(V.current_bg_meta_build())
-    n = lambda c: db.name(c) if c else "?"  # noqa: E731
-    pct = lambda v: f"{v:.0%}" if v is not None else "?"  # noqa: E731
+    n = lambda c: db.name(c) if c else "?"
+    pct = lambda v: f"{v:.0%}" if v is not None else "?"
 
-    print(f"# bg-coach facts ({'last %d games' % a.last if a.last else 'last session'})")
+    print(f"# bg-coach facts ({f'last {a.last} games' if a.last else 'last session'})")
     print(f"- player MMR ~{rep['mmr']}, compared with top-{b}% players (MMR {rep['bracket_mmr']}+), "
           f"{rep['meta_games']} games, meta updated {str(rep['meta_updated'])[:10]}")
     print(f"- all-time: {rep['games']} games, average place {rep['avg_placement']}")
@@ -95,9 +95,9 @@ def main(argv: list[str] | None = None):
         print("- per fight: " + ", ".join(f"R{x['round']} {pct(x['ratio'])} {x['result'][0] if x.get('result') else '?'}"
                                           for x in ga["strength"]))
         tr = ga["tier_round"]
-        print(f"- tiers reached: " + ", ".join(f"T{t} R{tr[t]}" for t in sorted(tr)) +
+        print("- tiers reached: " + ", ".join(f"T{t} R{tr[t]}" for t in sorted(tr)) +
               f"; gold unspent {ga['gold_unspent']}; HP lost by R8 {ga['hp_lost_by_r8']}; refreshes {ga['refreshes']}")
-        weak = [p for p in ga["picks"] if p["loss"] >= 0.25]
+        weak = [p for p in ga["picks"] if p.get("clear")]  # beyond chance (advice.py)
         if weak:
             print("- weaker picks: " + "; ".join(f"R{p['round']} {n(p['picked'])} {p['picked_avg']} vs {n(p['best'])} {p['best_avg']}"
                                                 for p in weak))

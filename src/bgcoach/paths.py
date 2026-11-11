@@ -3,6 +3,7 @@
 Every location can be overridden with an environment variable:
   BGCOACH_DATA    app data (default: <project>/data)
   BGCOACH_HS_DIR  Hearthstone install folder (the one containing "Logs")
+  BGCOACH_HDT_DIR Hearthstone Deck Tracker data folder (Windows; empty = don't use HDT)
 """
 from __future__ import annotations
 
@@ -22,6 +23,8 @@ HOME = Path.home()
 
 def _hdt_dir() -> Path | None:
     """Hearthstone Deck Tracker (Windows only): game history + Bob's Buddy odds."""
+    if "BGCOACH_HDT_DIR" in os.environ:  # "" = pretend HDT isn't installed (tests)
+        return Path(os.environ["BGCOACH_HDT_DIR"]) if os.environ["BGCOACH_HDT_DIR"] else None
     if not IS_WIN or not os.environ.get("APPDATA"):
         return None
     p = Path(os.environ["APPDATA"]) / "HearthstoneDeckTracker"
@@ -131,7 +134,7 @@ def screenshot_dirs() -> list[Path]:
             ctypes.windll.shell32.SHGetFolderPathW(None, 0x0010, None, 0, buf)  # CSIDL_DESKTOPDIRECTORY
             if buf.value:
                 cands.insert(0, Path(buf.value))
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
     out: list[Path] = []
     for c in cands:

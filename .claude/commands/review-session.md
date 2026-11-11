@@ -2,7 +2,7 @@
 description: Coach review of my latest Battlegrounds session (from bg-coach's verified facts)
 ---
 
-Run `uv run bgcoach facts $ARGUMENTS` in `D:\bg-coach` (no arguments = my last session;
+Run `uv run bgcoach facts $ARGUMENTS` in the bg-coach folder (no arguments = my last session;
 `--last 10` = last 10 games) and write my coaching review from its output.
 
 Rules:

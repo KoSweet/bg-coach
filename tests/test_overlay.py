@@ -4,6 +4,7 @@ import pytest
 
 def _overlay_checks():
     import tkinter as tk
+
     from bgcoach import overlay
     try:
         o = overlay.Overlay(port=1)  # nothing listens on port 1: the stream just retries
@@ -35,11 +36,13 @@ def _overlay_checks():
                          "best": "A", "names": {"A": "Alpha", "B": "Beta"}})
     assert not o.compact and o.auto_expanded and len(o.advice_rows) == 3
     o._handle("choice", {"kind": "DISCOVER", "picked": "B"})
-    assert o.compact and not o.advice_rows[0].winfo_ismapped() or o.compact
+    assert (o.compact and not o.advice_rows[0].winfo_ismapped()) or o.compact
     o._handle("action", {"type": "BUY", "round": 7, "strength": 0.76, "gold": 3, "target": "A"})
     assert "76%" in o.strength.cget("text") and "FOCUS" in o.strength.cget("text")
-    o._expand(); assert not o.compact
-    o._shrink(); assert o.compact
+    o._expand()
+    assert not o.compact
+    o._shrink()
+    assert o.compact
     assert "Print Screen" in o.checks.cget("text")
     for i in range(30):
         o._handle("action", {"type": "REFRESH", "gold": i})
@@ -61,3 +64,52 @@ def test_overlay_states_and_feed(tmp_path):
     if "SKIP" in r.stdout:
         pytest.skip("no display")
     assert "OVERLAY OK" in r.stdout, r.stdout + r.stderr
+
+
+def _serve_once(pid: str):
+    """A stand-in app that answers the live stream with the given process id."""
+    import http.server
+    import threading
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("X-BGCoach-PID", pid)
+            self.end_headers()
+            self.wfile.write(b": hello\n\n")
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
+def test_overlay_closes_when_another_app_answers():
+    # an overlay left over from a crashed app must not attach itself to the next app (two overlays)
+    import queue
+    overlay = pytest.importorskip("bgcoach.overlay")
+    srv = _serve_once("222")
+    try:
+        q = queue.Queue()
+        overlay._stream(f"http://127.0.0.1:{srv.server_address[1]}/api/live/events", q, app_pid=111)
+        assert q.get_nowait()[0] == "_orphan"
+    finally:
+        srv.shutdown()
+
+
+def test_overlay_closes_when_its_app_is_gone(monkeypatch):
+    import queue
+    import socket
+    overlay = pytest.importorskip("bgcoach.overlay")
+    monkeypatch.setattr(overlay, "ORPHAN_AFTER_S", 0)
+    monkeypatch.setattr(overlay.time, "sleep", lambda s: None)
+    with socket.socket() as s:  # a port nobody listens on
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    q = queue.Queue()
+    overlay._stream(f"http://127.0.0.1:{port}/api/live/events", q, app_pid=111)
+    kinds = [q.get_nowait()[0] for _ in range(q.qsize())]
+    assert kinds[-1] == "_orphan"

@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import datetime as dt
 import re
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from typing import Callable, Iterable
 
 LINE_RE = re.compile(r"^[DWIE] (\d\d):(\d\d):(\d\d)\.(\d+) GameState\.(\w+)\(\) - (.*)$")
 REF_RE = re.compile(r"\[entityName=.*? id=(\d+) zone=(\w+) zonePos=(\d+) cardId=(\S*) player=(\d+)\]")
@@ -106,10 +106,14 @@ class Replay:
 
     def __init__(self, base_date: dt.date | None = None,
                  on_event: Callable[[str, dict], None] | None = None,
-                 on_game: Callable[[Game], None] | None = None):
+                 on_game: Callable[[Game], None] | None = None,
+                 on_game_start: Callable[[Game], None] | None = None):
+        """on_event(kind, data) for every event; on_game(game) when a game ends;
+        on_game_start(game) as soon as a new game's build number is known."""
         self.base_date = base_date or dt.date.today()
         self.on_event = on_event or (lambda kind, data: None)
         self.on_game = on_game
+        self.on_game_start = on_game_start
         self.games: list[Game] = []
         self.errors: list[dict] = []
         self.line_no = 0
@@ -134,7 +138,6 @@ class Replay:
         self.cur_combat: dict | None = None
         self.last_shop: list | None = None
         self.now: dt.datetime | None = None
-        self._pending_hdr: dict = {}
         self._complete_at: dt.datetime | None = None
         self.my_hero_ids: set[int] = set()
         self.placement_locked = False
@@ -267,7 +270,7 @@ class Replay:
             return
         try:
             self._feed(line)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             import traceback
             err = {"line_no": self.line_no, "line": line.rstrip()[:400], "error": repr(e),
                    "traceback": traceback.format_exc(limit=4),
@@ -305,8 +308,8 @@ class Replay:
         self.finish()
         return self.games
 
-    def flush_if_idle(self, idle_seconds: float = 3.0):
-        """Live mode: close a completed game when the log goes quiet."""
+    def flush_if_idle(self):
+        """Live mode: close a completed game when the log goes quiet (the caller decides when)."""
         if self._complete_at is not None and self.g is not None:
             self._end_game(complete=True)
 
@@ -320,6 +323,8 @@ class Replay:
             return
         if body.startswith("BuildNumber="):
             self.g.build = int(body.split("=", 1)[1])
+            if self.on_game_start:
+                self.on_game_start(self.g)
         elif body.startswith("GameType="):
             self.g.game_type = body.split("=", 1)[1]
         elif body.startswith("PlayerID="):
@@ -448,7 +453,6 @@ class Replay:
     def _on_turn(self, turn: int):
         self._run_checks(turn_ended=True)
         g = self.g
-        prev = self.turn
         self.turn = turn
         if turn % 2 == 0:  # recruit -> combat
             board = self.board()
@@ -560,7 +564,7 @@ class Replay:
         m = SEND_OPTION_RE.search(body)
         if not m or self.g is None:
             return
-        sel, sub, target, pos = (int(x) for x in m.groups())
+        sel, _sub, target, pos = (int(x) for x in m.groups())
         opt = self.options.get(sel)
         if opt is None:
             return
@@ -609,7 +613,7 @@ class Replay:
         for a, what, fn in self.pending_checks:
             try:
                 ok = bool(fn())
-            except Exception:  # noqa: BLE001
+            except Exception:
                 ok = False
             if ok:
                 self.g.checks_ok += 1

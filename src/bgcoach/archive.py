@@ -22,7 +22,7 @@ import sys
 import time
 from pathlib import Path
 
-from .paths import DATA, HDT_DIR, HS_LOGS  # noqa: E402
+from .paths import DATA, HDT_DIR, HS_LOGS
 
 ARCHIVE = DATA / "raw"
 # optional one-time import of logs collected by an older project (set BGCOACH_LEGACY_REPO)

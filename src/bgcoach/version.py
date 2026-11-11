@@ -8,16 +8,16 @@ from __future__ import annotations
 
 import gzip
 import json
-import os
 import re
 import time
 import urllib.request
 from functools import lru_cache
-from pathlib import Path
 
-from .paths import DATA, HS_LOGS  # noqa: E402  (shared, cross-platform)
+from . import __version__
+from .paths import DATA, HS_LOGS  # shared, cross-platform
+
 CACHE = DATA / "cache"
-UA = {"User-Agent": "bgcoach/0.1"}
+UA = {"User-Agent": f"bgcoach/{__version__} (+https://github.com/KoSweet/bg-coach)"}
 PATCHES_URL = "https://static.zerotoheroes.com/hearthstone/data/patches.json"
 HSJSON_URL = "https://api.hearthstonejson.com/v1/{build}/enUS/cards.json"
 BLIZZ_BG_URL = "https://hearthstone.blizzard.com/en-us/api/cards?bgCardType={kind}&pageSize=500&page={page}"

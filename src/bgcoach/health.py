@@ -5,20 +5,22 @@ Two kinds of problems:
   Stored in data/errors.jsonl with full context.
 - issues: a parsed game looks wrong (no placement, unknown actions, HDT disagreement...).
 
-`report_text()` turns either into a short markdown block the user pastes into Claude Code:
-file paths, line numbers, the exact failing log line and traceback — everything needed to fix
-it without a back-and-forth.
+`report_text()` turns either into a short markdown block to paste into Claude Code or a GitHub
+issue: line numbers, the exact failing log line and traceback — everything needed to fix it
+without a back-and-forth. It is safe to post publicly: folder names are shortened (`~`, `<data>`)
+and BattleTags / player names in log lines are replaced (see `anonymise.py`).
 """
 from __future__ import annotations
 
 import datetime as dt
 import json
 import platform
+import re
 import subprocess
 import traceback
 from pathlib import Path
 
-from .version import DATA
+from .paths import DATA
 
 ERRORS = DATA / "errors.jsonl"
 REPO = Path(__file__).resolve().parents[2]
@@ -42,7 +44,7 @@ def record_error(kind: str, exc: BaseException | None = None, **context) -> dict
 def list_errors(limit: int = 200) -> list[dict]:
     if not ERRORS.exists():
         return []
-    rows = [json.loads(l) for l in ERRORS.read_text(encoding="utf-8").splitlines() if l.strip()]
+    rows = [json.loads(ln) for ln in ERRORS.read_text(encoding="utf-8").splitlines() if ln.strip()]
     return list(reversed(rows))[:limit]
 
 
@@ -128,26 +130,23 @@ def problem_report(note: str, source: str, round_no: int | None, start_line: int
     stamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
     lines = _read_range(source, start_line, end_line)
     slice_path = REPORTS / f"{stamp}_round{round_no}.log"
-    slice_path.write_text("\n".join(f"{i}: {l}" for i, l in lines), encoding="utf-8")
+    slice_path.write_text("\n".join(f"{i}: {ln}" for i, ln in lines), encoding="utf-8")
 
     # key lines, with each SendOption annotated by the option it picked
     key, last_opts = [], {}
-    for i, l in lines:
-        if "DebugPrintOptions() - id=" in l:
+    for i, ln in lines:
+        if "DebugPrintOptions() - id=" in ln:
             last_opts = {}
-        elif "DebugPrintOptions() -   option " in l:
-            import re
-            m = re.search(r"option (\d+) type=(\w+) mainEntity=(.*?) error=", l)
+        elif "DebugPrintOptions() -   option " in ln:
+            m = re.search(r"option (\d+) type=(\w+) mainEntity=(.*?) error=", ln)
             if m:
                 last_opts[m.group(1)] = (i, f"{m.group(2)} {m.group(3)[:120]}")
-        if any(k in l for k in _KEY):
-            txt = l.split(" - ", 1)[-1].strip()
-            if "SendOption" in l:
-                import re
-                m = re.search(r"selectedOption=(\d+)", l)
+        if any(k in ln for k in _KEY):
+            txt = ln.split(" - ", 1)[-1].strip()
+            if "SendOption" in ln:
+                m = re.search(r"selectedOption=(\d+)", ln)
                 if m and m.group(1) in last_opts:
                     txt += f"   ⇒ option {m.group(1)} = {last_opts[m.group(1)][1]}"
-            if "SendOption" in l:
                 key.append(f"{i}: {txt[:420]}")
             else:
                 key.append(f"{i}: {txt[:220]}")
@@ -156,7 +155,7 @@ def problem_report(note: str, source: str, round_no: int | None, start_line: int
         rec_lines.append(f"- round {recorded.get('round')}: tier {recorded.get('tier')}, gold {recorded.get('gold')}, "
                          f"hp {recorded.get('hp')}")
         for a in recorded.get("actions", []):
-            nm = lambda c: f"{names[c]} ({c})" if names and c in names else c  # noqa: E731
+            nm = lambda c: f"{names[c]} ({c})" if names and c in names else c
             if a["type"] == "CHOICE":
                 what = f"{a.get('kind')}: picked {nm(a.get('picked'))} from {[nm(o) for o in a.get('options', [])]}"
             elif a["type"] in ("BUY", "SELL"):
@@ -186,7 +185,7 @@ def problem_report(note: str, source: str, round_no: int | None, start_line: int
         "`replay.py`, fix it, and add a regression test using this log.",
     ])
     (REPORTS / f"{stamp}_round{round_no}.md").write_text(text, encoding="utf-8")
-    return {"text": text, "slice": str(slice_path)}
+    return {"text": private(text), "slice": str(slice_path)}  # the local .md/.log keep everything
 
 
 # ------------------------------------------------------------------ report for Claude
@@ -218,10 +217,27 @@ def _log_excerpt(source: str | None, line_no: int | None, radius: int = 6) -> st
     return "\n".join(out)
 
 
+def private(text: str) -> str:
+    """Remove personal data: player names / BattleTags in log lines, and your folder names."""
+    from .anonymise import anonymise_lines
+    lines, _ = anonymise_lines(text.splitlines(keepends=True))
+    text = "".join(lines)
+    for path, label in ((DATA, "<data>"), (REPO, "<bg-coach>"), (Path.home(), "~")):
+        for form in {str(path), path.as_posix(), json.dumps(str(path))[1:-1]}:
+            text = text.replace(form, label)
+    return text
+
+
 def report_text(item: dict, kind: str = "error") -> str:
-    """Compact markdown to paste into Claude Code."""
+    """Compact markdown for Claude Code or a GitHub issue (personal data removed)."""
+    return private(_report_text(item, kind))
+
+
+def _report_text(item: dict, kind: str) -> str:
+    from . import __version__
     head = [f"## bg-coach {kind} report",
-            f"- repo: `{REPO}` @ `{_git_rev()}` · python {platform.python_version()} · {platform.system()}"]
+            f"- bg-coach {__version__} @ `{_git_rev()}` · python {platform.python_version()} · "
+            f"{platform.system()} {platform.release()}"]
     if kind == "error":
         ctx = item.get("context", {})
         head += [f"- time: {item.get('time')} · kind: **{item.get('kind')}**",

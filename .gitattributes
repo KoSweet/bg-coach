@@ -2,3 +2,7 @@
 *.sh text eol=lf
 *.vbs text eol=crlf
 *.bat text eol=crlf
+*.gz binary
+*.png binary
+*.ico binary
+*.icns binary

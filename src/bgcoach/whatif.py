@@ -176,7 +176,7 @@ def run(games: list[dict], bracket: int, force: bool = False, progress=print) ->
             continue
         try:
             res = analyse(g, bracket)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             from .health import record_error
             record_error("whatif", e, game=g["file"])
             continue
@@ -189,6 +189,7 @@ def run(games: list[dict], bracket: int, force: bool = False, progress=print) ->
 
 def main(argv=None):
     import argparse
+
     from . import analysis, meta
     ap = argparse.ArgumentParser(prog="bgcoach whatif")
     ap.add_argument("--last", type=int, default=20)

@@ -8,10 +8,10 @@ Nothing here is a rule; every number says how it was computed and from how many 
 """
 from __future__ import annotations
 
-import datetime as dt
 import statistics as st
 
-from . import meta
+from . import advice, meta
+from .advice import Stat
 from .replay import norm_hero
 
 PICK_KINDS = {"DISCOVER", "TRIPLE_DISCOVER", "DARK_GIFT_PICK"}
@@ -42,8 +42,10 @@ def game_analysis(g: dict, bracket: int) -> dict:
     picked = next((o for o in offered if norm_hero(o["hero"]) == norm_hero(g.get("hero"))), None)
     if picked and picked["avg"] is not None and len(known) >= 2:
         best = min(known, key=lambda o: o["avg"])
+        s_p, s_b = Stat(picked["avg"], picked["n"]), Stat(best["avg"], best["n"])
         out["hero_pick"] = {"offered": offered, "picked_avg": picked["avg"], "best": best["hero"],
-                            "best_avg": best["avg"], "loss": round(picked["avg"] - best["avg"], 2)}
+                            "best_avg": best["avg"], "loss": round(picked["avg"] - best["avg"], 2),
+                            "clear": advice.clearly_better(s_p, s_b), "noise": round(advice.noise(s_p, s_b), 2)}
 
     # ---- tempo
     reach = {}
@@ -72,7 +74,7 @@ def game_analysis(g: dict, bracket: int) -> dict:
         for s in strength:
             c = combats.get(s["round"])
             s["bb"] = bobsbuddy.for_game_combat(g, c, sims) if c else None
-    except Exception:  # noqa: BLE001  (HDT logs missing: just no odds)
+    except Exception:  # HDT logs missing: just no odds
         pass
     out["luck"] = {
         "unlucky_losses": [s["round"] for s in strength if s.get("bb") and s["bb"]["win"] >= 50 and s["result"] == "LOSS"],
@@ -85,34 +87,41 @@ def game_analysis(g: dict, bracket: int) -> dict:
         return round(st.median(r), 2) if r else None
     out["strength_phase"] = {"early": phase(1, 5), "mid": phase(6, 9), "late": phase(10, 99)}
 
-    # ---- picks (meta): picked option vs best option at that turn
+    # ---- picks (meta): picked option vs the best option that passes the advice rules (advice.py)
+    from . import synergy
+    from . import version as V
+    db = V.card_db(g.get("build") or V.current_bg_meta_build())
     picks = []
     for t in g.get("turns") or []:
+        hp = (t["hp"] + (t.get("armor") or 0)) if t.get("hp") is not None else None
         for a in t.get("actions") or []:
             if a.get("type") != "CHOICE" or a.get("kind") not in PICK_KINDS:
                 continue
-            vals = {o: cm.at_turn(o, t["round"]) for o in a.get("options") or []}
-            got = vals.get(a.get("picked"))
-            from . import synergy
+            picked = a.get("picked")
+            stats = {o: cm.stat(o, t["round"]) for o in a.get("options") or []}
+            got = stats.get(picked)
             board_now = [m["card_id"] for m in t.get("board") or []] + [
                 x["card_id"] for x in t.get("actions") or []
                 if x["type"] == "PLAY" and x.get("card_id") and (x.get("line") or 0) < (a.get("line") or 0)]
             ctx = synergy.context(board_now, synergy.history_until(g, t["round"], a.get("line")))
-            fits = {o: synergy.fit(o, ctx) for o in vals}
-            lvl_p = fits.get(a.get("picked"), (2, ""))[0]
-            # only options that fit your build at least as well as your pick can be "better"
-            known_v = {k: v for k, v in vals.items() if v is not None and fits[k][0] >= lvl_p
-                       and (fits[k][0] > 0 or k == a.get("picked"))}  # never suggest an off-build card
-            if got is None or len(known_v) < 2:
+            fits = {o: synergy.fit(o, ctx) for o in stats}
+            lvl_p = fits.get(picked, (2, ""))[0]
+            # only options that fit at least as well (never off-build) and, at low HP, help the next fight too
+            known = {k: s for k, s in stats.items() if s is not None and (k == picked or (
+                fits[k][0] >= lvl_p and fits[k][0] > 0 and advice.survives(picked, k, hp, db)))}
+            if got is None or len(known) < 2:
                 continue
-            best = min(known_v, key=known_v.get)
-            picks.append({"round": t["round"], "kind": a["kind"], "picked": a["picked"], "picked_avg": round(got, 2),
-                          "best": best, "best_avg": round(known_v[best], 2), "loss": round(got - known_v[best], 2),
-                          "picked_fit": fits[a["picked"]][1], "best_fit": fits[best][1],
+            best = min(known, key=lambda k: known[k].avg)
+            picks.append({"round": t["round"], "kind": a["kind"], "picked": picked, "picked_avg": round(got.avg, 2),
+                          "best": best, "best_avg": round(known[best].avg, 2), "loss": round(got.avg - known[best].avg, 2),
+                          "clear": best != picked and advice.clearly_better(got, known[best]),
+                          "noise": round(advice.noise(got, known[best]), 2), "picked_n": got.n, "best_n": known[best].n,
+                          "hp": hp, "low_hp": advice.low_hp(hp),
+                          "picked_fit": fits[picked][1], "best_fit": fits[best][1],
                           "fits": {k: list(v) for k, v in fits.items()},
-                          "options": {k: (round(v, 2) if v else None) for k, v in vals.items()}})
+                          "options": {k: (round(s.avg, 2) if s else None) for k, s in stats.items()}})
     out["picks"] = picks
-    out["pick_loss"] = round(sum(p["loss"] for p in picks), 2)
+    out["pick_loss"] = round(sum(p["loss"] for p in picks if p["clear"]), 2)  # only differences beyond chance
 
     # ---- economy / HP / pace
     turns = g.get("turns") or []
@@ -173,8 +182,8 @@ def improve_report(games: list[dict]) -> dict:
             "title": "Hero choice",
             "finding": f"Your picks average {st.mean(r['a']['hero_pick']['picked_avg'] for r in hp):.2f} expected "
                        f"placement; the best hero offered averaged {st.mean(r['a']['hero_pick']['best_avg'] for r in hp):.2f}.",
-            "detail": f"In {sum(l >= 0.3 for l in losses)} of {len(hp)} games you took a hero ≥0.3 places worse "
-                      f"(at top-{bracket}% MMR) than the best one offered.",
+            "detail": f"In {sum(r['a']['hero_pick']['clear'] for r in hp)} of {len(hp)} games you took a hero "
+                      f"clearly worse (at top-{bracket}% MMR, beyond chance) than the best one offered.",
             "advice": "Unless you have a specific plan, take the hero with the best average placement at your MMR "
                       "(shown on each game page).",
             "examples": [{"file": r["file"], "picked": r["hero"], "best": r["a"]["hero_pick"]["best"],
@@ -186,12 +195,12 @@ def improve_report(games: list[dict]) -> dict:
     if pk:
         per_game = [r["a"]["pick_loss"] for r in pk]
         allp = [p | {"file": r["file"]} for r in pk for p in r["a"]["picks"]]
-        big = sorted([p for p in allp if p["loss"] >= 0.25], key=lambda p: -p["loss"])
+        big = sorted([p for p in allp if p.get("clear")], key=lambda p: -p["loss"])
         habits.append({
             "id": "picks", "evidence": "meta", "cost": round(st.mean(per_game) / 3, 2), "n": len(allp),
             "title": "Discover / triple / Dark Gift picks",
-            "finding": f"{len(big)} of {len(allp)} picks were ≥0.25 places worse than another option offered "
-                       f"(by how those cards perform on that turn at your MMR).",
+            "finding": f"{len(big)} of {len(allp)} picks were clearly worse than another option offered that fit "
+                       f"your build as well (≥0.25 places, beyond chance, at your MMR on that turn).",
             "detail": "Card stats are correlations (strong players pick strong cards), so the cost is shown at ⅓ weight.",
             "advice": "Before picking, check the option that wins most on that turn; the game page shows each option's number.",
             "examples": big[:3],
@@ -322,22 +331,26 @@ def coach_report(games: list[dict], recent: int = 20) -> dict:
         for d in all_decisions(r["g"], bracket, r["a"]["strength"]):
             decisions.append({**d, "file": r["file"], "start": r["start"], "hero": r["hero"], "placement": r["placement"]})
         hp = r["a"].get("hero_pick")
-        if hp and hp["loss"] >= 0.25:
+        if hp and hp.get("clear"):
             decisions.append({"kind": "hero", "round": 0, "file": r["file"], "start": r["start"], "hero": r["hero"],
                               "placement": r["placement"], "you": r["hero"], "you_val": hp["picked_avg"],
                               "better": hp["best"], "better_val": hp["best_avg"], "diff": hp["loss"],
                               "calc": f"At your MMR: your hero averages {hp['picked_avg']}, the best offered "
-                                      f"averages {hp['best_avg']}. Difference {hp['loss']:+.2f} places."})
+                                      f"averages {hp['best_avg']}: {hp['loss']:.2f} places better (chance alone "
+                                      f"could explain up to {hp['noise']})."})
         for p in r["a"]["picks"]:
-            if p["loss"] >= 0.3:
+            if p.get("clear"):
                 decisions.append({"kind": "pick", "round": p["round"], "file": r["file"], "start": r["start"],
                                   "hero": r["hero"], "placement": r["placement"], "you": p["picked"],
                                   "you_val": p["picked_avg"], "better": p["best"], "better_val": p["best_avg"],
                                   "diff": p["loss"], "pick_kind": p["kind"],
                                   "picked_fit": p.get("picked_fit"), "best_fit": p.get("best_fit"),
                                   "calc": f"{p['kind'].replace('_', ' ').title()} on round {p['round']} at your MMR: "
-                                          f"your pick {p['picked_avg']}, the other option {p['best_avg']}. "
-                                          f"Difference {p['loss']:+.2f} places."})
+                                          f"your pick {p['picked_avg']}, the other option {p['best_avg']}: "
+                                          f"{p['loss']:.2f} places better (chance alone could explain up to "
+                                          f"{p['noise']}; {p['picked_n']:,} and {p['best_n']:,} games)."
+                                          + (f" You had {p['hp']} HP, so only options adding at least as much to "
+                                             f"your board right now were compared." if p.get("low_hp") else "")})
 
     def weight(d):  # comparable "size" of each moment
         if d["kind"] == "fight":

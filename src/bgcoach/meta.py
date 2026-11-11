@@ -13,10 +13,11 @@ import datetime as dt
 import gzip
 import json
 from functools import lru_cache
-from pathlib import Path
 
+from .advice import Stat
+from .paths import DATA
 from .replay import norm_hero
-from .version import DATA, _get
+from .version import _get
 
 META_DIR = DATA / "meta"
 URL = "https://static.zerotoheroes.com/api/bgs/{kind}/mmr-{bracket}/last-patch/overview-from-hourly.gz.json"
@@ -80,8 +81,9 @@ class CardMeta:
                 "turn": {t["turn"]: (t["averagePlacement"], t["totalPlayed"]) for t in c.get("turnStats") or []},
             }
 
-    def at_turn(self, card_id: str | None, turn: int, min_n: int = 50) -> float | None:
-        """Average placement of players who played this card on this turn (None if too few games)."""
+    def stat(self, card_id: str | None, turn: int, min_n: int = 50) -> Stat | None:
+        """Average placement of players who played this card on this turn, and how many games that
+        rests on (None if too few games)."""
         if not card_id:
             return None
         c = self.cards.get(card_id) or self.cards.get(card_id.removesuffix("_G"))
@@ -90,8 +92,12 @@ class CardMeta:
         for t in (turn, turn - 1, turn + 1):  # neighbouring turns if this one is thin
             v = c["turn"].get(t)
             if v and v[1] >= min_n:
-                return v[0]
-        return c["avg"] if c["n"] >= min_n * 5 else None
+                return Stat(v[0], v[1])
+        return Stat(c["avg"], c["n"]) if c["n"] >= min_n * 5 else None
+
+    def at_turn(self, card_id: str | None, turn: int, min_n: int = 50) -> float | None:
+        s = self.stat(card_id, turn, min_n)
+        return s.avg if s else None
 
 
 @lru_cache(maxsize=8)

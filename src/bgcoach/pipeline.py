@@ -5,22 +5,19 @@ import collections
 import datetime as dt
 import gzip
 import json
-import os
 import re
 import xml.etree.ElementTree as ET
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from . import version as V
 from .health import game_issues, record_error
+from .paths import DATA, HDT_DIR
 from .replay import Game, Replay, norm_hero
 
-DATA = V.DATA
 RAW = DATA / "raw"
 GAMES_DIR = DATA / "games"
 IMPORTED = DATA / "imported.json"
-from .paths import HDT_DIR  # noqa: E402
-
 HDT_XML = HDT_DIR / "BgsLastGames.xml" if HDT_DIR else None  # Windows + HDT only
 
 
@@ -55,9 +52,9 @@ def hdt_games() -> list[dict]:
         if not src.exists():
             continue
         try:
-            data = gzip.open(src).read() if src.suffix == ".gz" else src.read_bytes()
+            data = gzip.decompress(src.read_bytes()) if src.suffix == ".gz" else src.read_bytes()
             root = ET.fromstring(data)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             record_error("hdt_read", e, source=str(src))
             continue
         for el in root.iter("Game"):
@@ -90,6 +87,14 @@ def game_file(g: Game | dict) -> Path:
     return GAMES_DIR / f"{start:%Y%m%d_%H%M%S}_{norm_hero(hero)}.json"
 
 
+def completeness(g: Game | dict) -> tuple[bool, int, int]:
+    """How much of a game one parse saw. The same game can be in several archived copies, e.g. a
+    Power.log archived mid-game that Hearthstone emptied later, next to the live copy: keep the fuller one."""
+    if isinstance(g, Game):
+        return bool(g.complete), len(g.turns), g.checks_ok or 0
+    return bool(g.get("complete")), len(g.get("turns") or []), g.get("checks_ok") or 0
+
+
 def save_game(g: Game, hdt: list[dict] | None = None) -> Path:
     GAMES_DIR.mkdir(parents=True, exist_ok=True)
     d = g.to_dict()
@@ -99,12 +104,18 @@ def save_game(g: Game, hdt: list[dict] | None = None) -> Path:
     if p.exists():  # a re-save must never lose what the previous save knew
         try:
             old = json.loads(p.read_text(encoding="utf-8"))
-            if not d.get("source"):
-                d["source"] = old.get("source")
+        except Exception:
+            old = None
+        if old is not None:
             if not d.get("hdt") and old.get("hdt"):  # e.g. HDT was mid-write when we read its file
                 d["hdt"] = old["hdt"]
-        except Exception:  # noqa: BLE001
-            pass
+            if completeness(old) > completeness(d):  # a partial copy of a game we already have in full
+                if d.get("hdt") and not old.get("hdt"):
+                    old["hdt"] = d["hdt"]
+                    p.write_text(json.dumps(old, indent=1, default=str), encoding="utf-8")
+                return p
+            if not d.get("source"):
+                d["source"] = old.get("source")
     p.write_text(json.dumps(d, indent=1, default=str), encoding="utf-8")
     return p
 
@@ -123,7 +134,7 @@ def load_games() -> list[dict]:
     for p in sorted(GAMES_DIR.glob("*.json")):
         try:
             g = json.loads(p.read_text(encoding="utf-8"))
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             record_error("game_file_unreadable", e, file=str(p))
             continue
         g["file"] = p.name
@@ -178,7 +189,7 @@ def import_all(force: bool = False, progress: Callable[[str], None] = print) -> 
         progress(f"[{i}/{len(logs)}] parsing {p.parent.name}/{p.name}")
         try:
             games, errors = replay_path(p)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             record_error("import_failed", e, source=str(p))
             stats["failed_logs"] += 1
             continue
@@ -217,3 +228,50 @@ def card_names(obj, db: V.CardDB) -> dict[str, str]:
                 names[o] = c.get("name") or o
     walk(obj)
     return names
+
+
+# ------------------------------------------------------------------ verification against HDT
+def verify_against_hdt(limit: int = 0, progress: Callable[[str], None] = print) -> dict:
+    """Re-parse every archived log and compare hero / placement / final board with HDT's records.
+
+    Returns {"rows": [...], "agreement": {...}, "other_account": {...}, "solo_games": n, "avg_place": x}.
+    limit: only the newest N archived logs.  Your account = the one HDT recorded most games for; other accounts (spectated games) are listed apart.
+    """
+    hdt = hdt_games()
+    games: dict = {}
+    logs = archived_logs()
+    for p in logs[-limit:] if limit else logs:
+        try:
+            parsed, _ = replay_path(p)
+        except Exception as e:
+            progress(f"  ERROR {p.name}: {e!r}")
+            continue
+        for g in parsed:
+            key = g.start.replace(microsecond=0) if g.start else None
+            if key and (key not in games or completeness(g) > completeness(games[key])):
+                games[key] = g  # several archived copies of one game: keep the fullest
+        progress(f"  parsed {p.parent.name}/{p.name}: {len(parsed)} games")
+    rows = []
+    for g in sorted(games.values(), key=lambda g: g.start):
+        d = g.to_dict()
+        m = match_hdt(d, hdt)
+        res = None
+        if m:
+            mine = sorted(c["card_id"] for c in g.final_board)
+            res = {"hero": norm_hero(g.hero) == m["hero"], "placement": g.placement == m["placement"],
+                   "board": mine == m["board"]}
+        rows.append({"game": g, "hdt": m, "ok": res})
+    top = collections.Counter(r["game"].account for r in rows if r["hdt"]).most_common(1)
+    me = top[0][0] if top else None
+    agree, other = collections.Counter(), collections.Counter()
+    for r in rows:
+        r["mine"] = r["game"].account == me
+        if r["ok"]:
+            c = agree if r["mine"] else other
+            c["matched"] += 1
+            for k, v in r["ok"].items():
+                c[k] += v
+    solo = [r["game"] for r in rows if r["mine"] and "DUO" not in (r["game"].game_type or "")]
+    avg = round(sum(g.placement or 0 for g in solo) / len(solo), 2) if solo else None
+    return {"rows": rows, "agreement": dict(agree), "other_account": dict(other), "solo_games": len(solo),
+            "avg_place": avg}

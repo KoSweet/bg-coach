@@ -5,12 +5,11 @@ Standard library only. Binds to localhost so nothing is exposed to the network.
 from __future__ import annotations
 
 import json
+import os
 import queue
 import threading
-import traceback
 import uuid
 import webbrowser
-from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
@@ -32,28 +31,51 @@ class Hub:
         self.recent: list[tuple[str, dict]] = []  # events of the current game (for late joiners)
         self.watcher: LiveWatcher | None = None
 
+    def _advise(self, data: dict, bracket: int) -> None:
+        """Live pick advice with the same rules as the post-game review (advice.py):
+        best = lowest average among the options that fit your build best; `close` names the runner-up
+        when the difference is within chance; at low HP, `tempo` names an option that adds more
+        to your board right now than the statistical favourite."""
+        from . import advice, meta, synergy
+        opts = data.get("options") or []
+        if data.get("kind") == "HERO_PICK":
+            hm = meta.heroes(bracket)
+            stats = {o: advice.Stat(h["avg"], h["n"]) if (h := hm.get(o)) else None for o in opts}
+        else:
+            cm = meta.cards(bracket)
+            stats = {o: cm.stat(o, data.get("round") or 1) for o in opts}
+        vals = {o: s.avg if s else None for o, s in stats.items()}
+        known = [o for o in opts if stats[o]]
+        data["values"] = {o: (round(v, 2) if v is not None else None) for o, v in vals.items()}
+        data["bracket"] = bracket
+        best, top = (min(known, key=vals.get) if known else None), known
+        if data.get("kind") != "HERO_PICK" and data.get("board_ids") is not None:
+            ctx = synergy.context(data["board_ids"], data.get("history"))
+            best, fits = synergy.best_option(opts, vals, ctx)
+            data["fit"] = {k: [lv, why, synergy.LEVEL_WORD[lv]] for k, (lv, why) in fits.items()}
+            top = [o for o in known if best and fits[o][0] == fits[best][0]]
+        data["best"] = best
+        if not best:
+            return
+        others = [o for o in top if o != best]
+        runner = min(others, key=vals.get) if others else None
+        if runner and not advice.clearly_better(stats[runner], stats[best]):
+            data["close"] = runner  # too close to call on the numbers: pick for your board
+        hp = data.get("my_hp")
+        if advice.low_hp(hp) and data.get("kind") != "HERO_PICK":
+            db = self.watcher.db if self.watcher and self.watcher.db else V.card_db(V.current_bg_meta_build())
+            now = {o: advice.printed_stats(o, db) for o in top}
+            strongest = max((o for o in top if now[o] is not None), key=lambda o: now[o], default=None)
+            if strongest and strongest != best and (now.get(best) is None or now[strongest] > now[best]):
+                data["tempo"] = {"card": strongest, "hp": hp, "more": now[strongest] - (now.get(best) or 0)}
+
     def coach(self, kind: str, data: dict) -> dict:
         """Add meta numbers to live events: option values, board strength vs same hero."""
         try:
             from . import meta
             b = live_bracket()
             if kind == "offers":
-                if data.get("kind") == "HERO_PICK":
-                    hm = meta.heroes(b)
-                    vals = {o: (hm.get(o) or {}).get("avg") for o in data.get("options") or []}
-                else:
-                    cm = meta.cards(b)
-                    vals = {o: cm.at_turn(o, data.get("round") or 1) for o in data.get("options") or []}
-                known = {k: v for k, v in vals.items() if v is not None}
-                data["values"] = {k: (round(v, 2) if v is not None else None) for k, v in vals.items()}
-                data["best"] = min(known, key=known.get) if known else None
-                if data.get("kind") != "HERO_PICK" and data.get("board_ids") is not None:
-                    from . import synergy  # best = strongest option among those that fit your build best
-                    ctx = synergy.context(data["board_ids"], data.get("history"))
-                    best, fits = synergy.best_option(data.get("options") or [], vals, ctx)
-                    data["best"] = best
-                    data["fit"] = {k: [lv, why, synergy.LEVEL_WORD[lv]] for k, (lv, why) in fits.items()}
-                data["bracket"] = b
+                self._advise(data, b)
             if kind in ("turn_start", "action", "combat") and data.get("hero"):
                 h = meta.heroes(b).get(data["hero"])
                 rnd = data.get("round")
@@ -64,7 +86,7 @@ class Hub:
                 if ref and mine is not None:
                     data["strength"] = round(mine / ref, 2)
                     data["strength_ref"] = ref
-        except Exception:  # noqa: BLE001  (advice must never break the live feed)
+        except Exception:  # advice must never break the live feed
             pass
         return data
 
@@ -78,7 +100,7 @@ class Hub:
         try:
             if self.watcher and self.watcher.db and kind != "error":  # incl. status snapshots
                 data = {**data, "names": pipeline.card_names(data, self.watcher.db)}
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
         if kind == "status":
             self.last_status = data
@@ -103,7 +125,7 @@ class Hub:
                 from . import whatif
                 threading.Thread(target=whatif.run, args=([g], live_bracket()),
                                  kwargs={"progress": lambda m: None}, daemon=True).start()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
             a = analysis.game_analysis(g, live_bracket())
             hp = a.get("hero_pick") or {}
@@ -114,7 +136,7 @@ class Hub:
                 "strength": a["strength_phase"], "hero_loss": hp.get("loss"), "hero_best": hp.get("best"),
                 "weak_picks": len(bad), "picks": len(a.get("picks") or []),
                 "tier_round": a.get("tier_round"), "bracket": a.get("bracket")})
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             health.record_error("summary", e, file=file)
 
     def subscribe(self) -> queue.Queue:
@@ -148,7 +170,7 @@ def start_job(name: str, fn) -> str:
         try:
             job["result"] = fn(progress)
             job["status"] = "done"
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             err = health.record_error(f"job_{name}", e)
             job["status"], job["error"] = "failed", err
     threading.Thread(target=run, daemon=True).start()
@@ -156,8 +178,8 @@ def start_job(name: str, fn) -> str:
 
 
 def job_archive(progress):
-    import io
     import contextlib
+    import io
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         code = archive.main([])
@@ -212,7 +234,9 @@ def replay_feeder(src: Path, dst: Path, lines_per_sec: int = 8000):
         for line in fi:
             buf.append(line)
             if len(buf) >= chunk:
-                fo.write("".join(buf)); fo.flush(); buf = []
+                fo.write("".join(buf))
+                fo.flush()
+                buf = []
                 time.sleep(0.05)
         fo.write("".join(buf))
 
@@ -297,13 +321,13 @@ def card_image(card_id: str, kind: str) -> tuple[bytes, str] | None:
         if (kind, cid) in _IMG_MISSING:
             continue
         try:
-            req = urllib.request.Request(IMG_URL[kind].format(id=cid), headers={"User-Agent": "bgcoach/0.1"})
+            req = urllib.request.Request(IMG_URL[kind].format(id=cid), headers=V.UA)
             with urllib.request.urlopen(req, timeout=15) as r:
                 data = r.read()
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(data)
             return data, ctype
-        except Exception:  # noqa: BLE001
+        except Exception:
             _IMG_MISSING.add((kind, cid))
     return None
 
@@ -353,7 +377,7 @@ class Handler(BaseHTTPRequestHandler):
             self._get()
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             pass  # browser closed the tab / navigated away: not an error
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             self._fail(e)
 
     def do_POST(self):
@@ -361,7 +385,7 @@ class Handler(BaseHTTPRequestHandler):
             self._post()
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             pass
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             self._fail(e)
 
     def _get(self):
@@ -406,7 +430,7 @@ class Handler(BaseHTTPRequestHandler):
                 g["coach"] = analysis.game_analysis(g, b)
                 g["coach"]["decisions"] = all_decisions(g, b, g["coach"]["strength"])
                 g["names"].update(pipeline.card_names(g["coach"], db))
-            except Exception as e:  # noqa: BLE001  (meta offline etc. must not break the page)
+            except Exception as e:  # meta offline etc. must not break the page
                 g["coach_error"] = health.record_error("coach", e, game=name)["error"]
             self._json(g)
         elif path == "/api/improve":
@@ -495,6 +519,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
+        self.send_header("X-BGCoach-PID", str(os.getpid()))  # an overlay checks it is talking to its own app
         self.end_headers()
         q = HUB.subscribe()
         try:
@@ -526,7 +551,7 @@ def _auto_archive(every_min: int = 30):
             from . import whatif  # simulate new games' fights (cached; skips games already done)
             recent = sorted(my_solo_games(), key=lambda g: g.get("start") or "")[-10:]
             whatif.run(recent, live_bracket(), progress=lambda m: None)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             HUB.emit("error", health.record_error("auto_archive", e))
         time.sleep(every_min * 60)
 
@@ -547,8 +572,9 @@ def _start_overlay(port: int):
     import sys
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     try:
-        return subprocess.Popen([sys.executable, "-m", "bgcoach.overlay", str(port)], creationflags=flags)
-    except Exception as e:  # noqa: BLE001
+        return subprocess.Popen([sys.executable, "-m", "bgcoach.overlay", str(port), str(os.getpid())],
+                                creationflags=flags)
+    except Exception as e:
         health.record_error("overlay_start", e)
         return None
 

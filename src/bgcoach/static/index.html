@@ -443,11 +443,14 @@ function coachHtml(g){
   const heroV = !hp ? "" : hp.loss<=0.05 ? `<span class="good">✓ best hero offered</span>` : `${tl(g.hero)} ${hp.picked_avg} vs ${tl(hp.best)} <b class="good">${hp.best_avg}</b>`;
   const luck = c.luck && c.luck.fights_with_odds ? `🎲 ${c.luck.unlucky_losses.length} · 🍀 ${c.luck.lucky_wins.length}` : "–";
   // one merged, chronological list: weaker picks + every decision moment
-  const picks = (c.picks||[]).filter(p=>p.loss>=0.15).map(p=>({kind:"pick", pick_kind:p.kind, round:p.round, you:p.picked, you_val:p.picked_avg,
+  // only differences beyond chance, among options that fit as well (and help the next fight at low HP)
+  const chance = p => ` That's ${p.loss.toFixed(2)} places; chance alone could explain up to ${p.noise}.`;
+  const picks = (c.picks||[]).filter(p=>p.clear).map(p=>({kind:"pick", pick_kind:p.kind, round:p.round, you:p.picked, you_val:p.picked_avg,
      better:p.best, better_val:p.best_avg, diff:p.loss, picked_fit:p.picked_fit, best_fit:p.best_fit,
-     calc:`Average placement at your MMR when taken on round ${p.round}: ${nm(p.picked)} ${p.picked_avg}, ${nm(p.best)} ${p.best_avg}.`}));
-  const heroM = hp && hp.loss>=0.25 ? [{kind:"hero", round:0, you:g.hero, you_val:hp.picked_avg, better:hp.best, better_val:hp.best_avg, diff:hp.loss,
-     calc:`Average placement at your MMR (top ${c.bracket}%).`}] : [];
+     calc:`Average placement at your MMR when taken on round ${p.round}: ${nm(p.picked)} ${p.picked_avg} (${(p.picked_n||0).toLocaleString()} games), ${nm(p.best)} ${p.best_avg} (${(p.best_n||0).toLocaleString()} games).`
+       + chance(p) + (p.low_hp ? ` You had ${p.hp} HP, so only options adding at least as much to your board right now were compared.` : "")}));
+  const heroM = hp && hp.clear ? [{kind:"hero", round:0, you:g.hero, you_val:hp.picked_avg, better:hp.best, better_val:hp.best_avg, diff:hp.loss,
+     calc:`Average placement at your MMR (top ${c.bracket}%). Chance alone could explain up to ${hp.noise} places.`}] : [];
   const moments = [...heroM, ...picks, ...(c.decisions||[])].sort((a,b)=>a.round-b.round);
   return `<div class="card"><h3>Coach</h3>
     <div class="verdicts">
@@ -486,7 +489,7 @@ async function loadImprove(){
       <div class="muted" style="margin-top:6px;font-size:12px">Ordered by total size: places for buys/picks/heroes, HP lost × how far behind for fights.</div></div>`:""}
     <div class="card"><h3>Decisions to learn from: biggest first</h3>
       ${r.decisions.map(d=>momentHtml(d,true)).join("") || '<span class="muted">Nothing stands out in your recent games.</span>'}
-      <div class="muted" style="font-size:12px;margin-top:6px">Numbers = average placement of players at your MMR who played that card / hero on that round (lower is better). They're correlations from ${(r.meta_games||0).toLocaleString()} games, not rules: you may have had a plan the shop doesn't show. Buys are only listed when you couldn't afford both cards and didn't buy the better one later that turn; cards that break your tribe synergy are never suggested.</div></div>
+      <div class="muted" style="font-size:12px;margin-top:6px">Numbers = average placement of players at your MMR who played that card / hero on that round (lower is better). They're correlations from ${(r.meta_games||0).toLocaleString()} games, not rules: you may have had a plan the shop doesn't show. Buys are only listed when you couldn't afford both cards and didn't buy the better one later that turn; cards that break your tribe synergy are never suggested. Only differences beyond chance are listed (each number says how many games it rests on), and at 15 HP or less only cards that add at least as much to your board right now.</div></div>
     ${trendHtml(r)}
     <div class="card"><h3>Your stats compared (context, not advice)</h3>${statsTableHtml(r.stats)}
       <div class="muted" style="font-size:12px;margin-top:6px">Medians. Top-4 vs 5th–8th shows what differs between your good and bad games; it doesn't say why (e.g. leveling late can be the right call at low HP).</div></div>`;
@@ -523,6 +526,8 @@ function showOffers(d){
     <div class="row">${(d.options||[]).map(o=>`<div style="display:inline-block;text-align:center">${chip({card_id:o, golden:o===d.best})}
       <div style="font-size:15px;font-weight:700;${o===d.best?"color:var(--good)":""}">${vals[o]??"?"}${o===d.best?" ★":""}</div>
       ${d.fit&&d.fit[o]?`<div class="muted" style="font-size:11px;max-width:90px" title="${esc(d.fit[o][1])}">${FIT_MARK(d.fit[o][0])}</div>`:""}</div>`).join("")}</div>
+    ${d.close?`<div style="font-size:13px;margin-top:4px">≈ ${nm(d.best)} and ${nm(d.close)} are too close to call on the numbers (within chance): pick what your board needs.</div>`:""}
+    ${d.tempo?`<div style="font-size:13px;margin-top:4px">♥ You're at <b>${d.tempo.hp} HP</b>: ${nm(d.tempo.card)} adds more to your board right now (+${d.tempo.more} stats). Surviving the next fight comes first.</div>`:""}
     ${d.fit?`<div class="muted" style="font-size:12px">★ = lowest average among the options that fit your build best (✓ fits · flexible · ~ side tribe · ✗ off)</div>`:""}</div>`;
 }
 function showStrength(d){
@@ -555,7 +560,7 @@ $("#flagSend").onclick = async () => {
   const r = await api("/api/problem",{method:"POST",body:JSON.stringify({...FLAG, note:$("#flagNote").value})});
   if (r.error){ $("#flagResult").textContent = r.error; return; }
   await copy(r.text);
-  $("#flagResult").innerHTML = `Copied! Paste it into Claude Code.<br>Raw log of that round saved to <code>${esc(r.slice)}</code>`;
+  $("#flagResult").innerHTML = `Copied (names and folders removed): paste it into Claude Code or a GitHub issue.<br>Raw log of that round saved locally to <code>${esc(r.slice)}</code>`;
 };
 
 // ---------- live

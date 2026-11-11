@@ -1,10 +1,11 @@
-"""Coaching analysis on a real game (skips when archive/meta are unavailable)."""
+"""Coaching analysis on the maintainer's real games (skipped when those games / the meta are unavailable)."""
 import json
-from pathlib import Path
 
 import pytest
 
-GAME = Path(r"D:\bg-coach\data\games\20261110_211054_BG21_HERO_000.json")
+from bgcoach.paths import DATA
+
+GAME = DATA / "games" / "20261110_211054_BG21_HERO_000.json"
 
 
 def test_game_analysis_cariel():
@@ -25,7 +26,7 @@ def test_game_analysis_cariel():
 
 
 def test_decisions_are_real_either_or_choices():
-    f = Path(r"D:\bg-coach\data\games\20261110_163527_TB_BaconShop_HERO_92.json")
+    f = DATA / "games" / "20261110_163527_TB_BaconShop_HERO_92.json"
     if not f.exists():
         pytest.skip("game file missing")
     from bgcoach import analysis, decisions

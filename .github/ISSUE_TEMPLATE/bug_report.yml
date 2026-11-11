@@ -1,0 +1,50 @@
+name: Bug report
+description: Something was recorded wrong, crashed, or didn't show up
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks! The fastest way to get a fix is the app's own report: it has the exact log lines,
+        and **personal data is already removed** (BattleTags, player names, your folder names).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      placeholder: "Round 6: I bought Risen Rider but the timeline shows a sell."
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: Report from the app
+      description: |
+        Health tab → the problem → **Copy report**, then paste here.
+        For a round you flagged with Print Screen: the game's page → 📷 → ⚑ Report this → Copy.
+      render: markdown
+  - type: textarea
+    id: log
+    attributes:
+      label: Log (optional)
+      description: |
+        If the report isn't enough, attach an anonymised log. Run
+        `uv run bgcoach anonymise <path to Power.log> --game N` and drag the `.anon.log.gz` file here.
+        Never attach a raw Power.log: it contains your BattleTag and other players' names.
+  - type: input
+    id: version
+    attributes:
+      label: bg-coach version
+      description: "`uv run bgcoach --version` (also in the first line of the report)"
+      placeholder: bg-coach 0.2.0
+  - type: dropdown
+    id: os
+    attributes:
+      label: System
+      options: [Windows, macOS, Linux]
+    validations:
+      required: true
+  - type: dropdown
+    id: hdt
+    attributes:
+      label: Hearthstone Deck Tracker installed?
+      options: ["Yes", "No"]

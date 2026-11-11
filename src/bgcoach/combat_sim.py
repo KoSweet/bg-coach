@@ -1,13 +1,14 @@
-"""Bridge to the combat simulator (Phase 4) — NOT ENABLED YET.
+"""Bridge to the combat simulator (optional: needs Node.js and `npm install` in sim/).
 
 `build_battle` turns one recorded fight into the simulator's input (BgsBattleInfo). `simulate`
-runs `sim/run.js` (Firestone's simulator, installed locally in sim/node_modules). Running that
-third-party code needs the user's explicit permission; until it's granted and the simulator has
-been validated against Bob's Buddy's logged odds, nothing in the app calls `simulate`.
+runs `sim/run.js`, a thin wrapper around Firestone's simulator installed locally in
+sim/node_modules (licence "All rights reserved": personal local use, never redistributed here).
 
-Planned uses once validated:
+Validated against Bob's Buddy's logged odds (`bgcoach sim-check`): close for rounds 1-10, so
+`whatif.py` only uses it there, and only for fights it reproduces. Uses:
   - positioning check: same boards, other orders of your minions -> win % per order
-  - buy counterfactual: your fight board with the bought card swapped for the alternative
+  - buy what-if: your fight board with the bought card swapped for the alternative
+Without the simulator everything else works; those checks are simply missing.
 """
 from __future__ import annotations
 
@@ -66,7 +67,7 @@ def available() -> bool:
 
 
 def simulate(battles: dict[str, dict], timeout: int = 300) -> dict[str, dict]:
-    """Run battles {id: BgsBattleInfo} -> {id: {win, tie, loss, ...}}. Requires user permission."""
+    """Run battles {id: BgsBattleInfo} -> {id: {win, tie, loss, ...}}."""
     if not available():
         raise RuntimeError("combat simulator not installed (sim/node_modules)")
     payload = "\n".join(json.dumps({"id": k, "battle": v}) for k, v in battles.items()) + "\n"

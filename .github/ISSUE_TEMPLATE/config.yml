@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: How it works
+    url: https://github.com/KoSweet/bg-coach/blob/main/docs/ARCHITECTURE.md
+    about: Parser, self-checks, coaching rules and the simulator, explained.

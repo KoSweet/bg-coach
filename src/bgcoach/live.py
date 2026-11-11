@@ -6,8 +6,8 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from . import version as V
 from .health import record_error
@@ -73,22 +73,8 @@ class LiveWatcher(threading.Thread):
     def _open(self, path: Path):
         self.path = path
         rp = Replay(base_date=base_date_for(path), on_event=lambda k, d: None,
-                    on_game=self._on_game)
-        orig = rp._game_hdr
-
-        seen = {"game": None}
-
-        def hdr(body, rp=rp, orig=orig):
-            orig(body)
-            if rp.g and rp.g.build and seen["game"] is not rp.g:  # every new game, not just new builds
-                seen["game"] = rp.g
-                if self.db is None or self.db.build != rp.g.build:
-                    self.db = V.card_db(rp.g.build)
-                p = V.patch_for_build(rp.g.build)
-                self.emit("game_start", {"build": rp.g.build, "patch": p.get("version"), "patch_name": p.get("name"),
-                                         "start": rp.g.start.isoformat() if rp.g.start else None})
-        rp._game_hdr = hdr
-        fh = open(path, encoding="utf-8", errors="replace")
+                    on_game=self._on_game, on_game_start=self._on_game_start)
+        fh = open(path, encoding="utf-8", errors="replace")  # noqa: SIM115 (kept open while following)
         if self.tee:
             self.tee.flush()
         self.tee = LogTee(path) if self.follow is None else None  # don't archive test replays
@@ -108,6 +94,13 @@ class LiveWatcher(threading.Thread):
             state["snapshot"] = self.snapshot()
         self.emit("status", state)
         return fh
+
+    def _on_game_start(self, g):
+        if self.db is None or self.db.build != g.build:
+            self.db = V.card_db(g.build)
+        p = V.patch_for_build(g.build)
+        self.emit("game_start", {"build": g.build, "patch": p.get("version"), "patch_name": p.get("name"),
+                                 "start": g.start.isoformat() if g.start else None})
 
     def snapshot(self) -> dict:
         """Current game state (used when joining mid-game / when the UI connects)."""
@@ -136,6 +129,9 @@ class LiveWatcher(threading.Thread):
                 from .synergy import history_until
                 data["board_ids"] = [c["card_id"] for c in rp.board()]
                 data["history"] = history_until(rp.g.to_dict(), (rp.turn + 1) // 2)
+                t = rp.g.turns[-1] if rp.g.turns else None  # health + armor at the start of this turn
+                if t and t.get("hp") is not None:
+                    data["my_hp"] = t["hp"] + (t.get("armor") or 0)
         self.emit(kind, data)
 
     def _on_game(self, g):
@@ -154,7 +150,7 @@ class LiveWatcher(threading.Thread):
         try:
             p = save_game(g, hdt_games())
             self.emit("game_end", {"file": p.name, "placement": g.placement, "hero": g.hero})
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             err = record_error("live_save_failed", e, source=str(self.path))
             self.emit("error", err)
 
@@ -191,7 +187,7 @@ class LiveWatcher(threading.Thread):
                 self.rp.feed(line)
                 if self.tee:
                     self.tee.add(line)
-            except Exception as e:  # noqa: BLE001  (never die silently)
+            except Exception as e:  # never die silently
                 err = record_error("live_watcher", e, source=str(self.path), line_no=getattr(self.rp, "line_no", None))
                 self.emit("error", err)
                 time.sleep(2)

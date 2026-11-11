@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .paths import REPO
 
-INCLUDE_FILES = ["README.md", "pyproject.toml", "uv.lock", ".gitignore", "bg-coach.vbs", "bg-coach.bat",
+INCLUDE_FILES = ["README.md", "LICENSE", "CHANGELOG.md", "pyproject.toml", "uv.lock", ".gitignore", "bg-coach.vbs", "bg-coach.bat",
                  "bg-coach-debug.bat", "bg-coach-test.bat", "mac/setup.command", "sim/run.js", "sim/package.json",
                  "sim/package-lock.json", "sim/test_battles.jsonl", ".claude/commands/review-session.md"]
 INCLUDE_DIRS = ["src", "tests"]
@@ -31,9 +31,9 @@ def files() -> list[Path]:
     return out
 
 
-def build() -> Path:
-    dist = REPO / "dist"
-    dist.mkdir(exist_ok=True)
+def build(dist: Path | None = None) -> Path:
+    dist = dist or REPO / "dist"
+    dist.mkdir(parents=True, exist_ok=True)
     zpath = dist / f"bg-coach-{dt.date.today():%Y%m%d}.zip"
     with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as z:
         for p in files():

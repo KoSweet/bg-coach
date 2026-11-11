@@ -1,11 +1,34 @@
 [project]
 name = "bgcoach"
-version = "0.1.0"
-description = "Personal Hearthstone Battlegrounds post-game analysis and skill-improvement loop"
+dynamic = ["version"]
+description = "A personal coach for Hearthstone Battlegrounds: records every decision from the game log and shows where you could have done better."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "KoSweet" }]
 requires-python = ">=3.11"
+keywords = ["hearthstone", "battlegrounds", "coach", "game-log", "overlay", "analysis"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Web Environment",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Games/Entertainment",
+]
 dependencies = [
     "pillow>=10",
 ]
+
+[project.urls]
+Homepage = "https://github.com/KoSweet/bg-coach"
+Documentation = "https://github.com/KoSweet/bg-coach/blob/main/docs/ARCHITECTURE.md"
+Issues = "https://github.com/KoSweet/bg-coach/issues"
+Changelog = "https://github.com/KoSweet/bg-coach/blob/main/CHANGELOG.md"
 
 [project.scripts]
 bgcoach = "bgcoach.cli:main"
@@ -13,14 +36,39 @@ bgcoach = "bgcoach.cli:main"
 [dependency-groups]
 dev = [
     "pytest>=8",
+    "ruff>=0.17.4",
 ]
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/bgcoach/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/bgcoach"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+ignore = [
+    "E731",    # small lambdas are fine
+    "SIM105",  # try/except/pass reads clearer than contextlib.suppress here
+    "SIM108",  # ternaries are not always clearer
+    "RUF001", "RUF002", "RUF003",  # we print → ▶ ✗ ⚔ on purpose
+    "B008",
+]
+
+[tool.ruff.lint.pycodestyle]
+max-line-length = 150  # compact style: 120 is the target, 150 the hard limit
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501"]
