@@ -1,0 +1,8 @@
+{
+  "name": "bgcoach-sim",
+  "private": true,
+  "description": "Local wrapper around Firestone's Battlegrounds combat simulator (personal local use only; package license: All rights reserved, not redistributed).",
+  "dependencies": {
+    "@firestone-hs/simulate-bgs-battle": "^1.1.778"
+  }
+}

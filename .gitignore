@@ -1,0 +1,10 @@
+data/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+reports/
+sim/node_modules/
+dist/
+bg-coach.app/
+sim/cards_cache.json

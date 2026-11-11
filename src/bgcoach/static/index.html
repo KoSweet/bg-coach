@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bg-coach</title>
+<link rel="icon" href="/icon.png">
+<style>
+:root{
+  --bg:#0f1115; --panel:#171a21; --panel2:#1d2129; --line:#2a2f3a; --text:#e6e8ee; --muted:#9097a6;
+  --accent:#e0a23a; --good:#45c07a; --bad:#e5534b; --warn:#d8a127; --blue:#5aa2f0;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{display:flex;align-items:center;gap:16px;padding:10px 18px;border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:5;flex-wrap:wrap}
+header h1{font-size:16px;margin:0;letter-spacing:.3px}
+header h1 span{color:var(--accent)}
+nav{display:flex;gap:4px}
+nav button{background:none;border:0;color:var(--muted);padding:7px 12px;border-radius:6px;cursor:pointer;font:inherit}
+nav button.on{background:var(--panel2);color:var(--text)}
+.chip{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 10px}
+.chip b{color:var(--text);font-weight:600}
+.chip.warn{border-color:var(--warn);color:var(--warn)}
+.spacer{flex:1}
+.btn{background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:6px 12px;border-radius:6px;cursor:pointer;font:inherit}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#1a1205;font-weight:600}
+.btn.small{padding:3px 9px;font-size:12px}
+main{padding:18px;max-width:1200px;margin:0 auto}
+.banner{display:none;margin:12px 18px 0;padding:10px 14px;border-radius:8px;background:#3a1c1c;border:1px solid var(--bad);gap:12px;align-items:center}
+.banner.show{display:flex}
+.banner .msg{flex:1}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:14px}
+.card h3{margin:0 0 10px;font-size:14px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.6px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.stat{background:var(--panel2);border-radius:8px;padding:10px 12px}
+.stat .k{color:var(--muted);font-size:12px}.stat .v{font-size:22px;font-weight:650}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);font-size:13px}
+th{color:var(--muted);font-weight:600}
+tr.click{cursor:pointer} tr.click:hover{background:var(--panel2)}
+.place{display:inline-block;min-width:26px;text-align:center;border-radius:5px;padding:1px 6px;font-weight:700}
+.p1{background:#6b4f10;color:#ffd67a}.p2,.p3,.p4{background:#1d3b2a;color:#7fdca6}.p5,.p6,.p7,.p8{background:#3b1f1f;color:#f0a09b}
+.up{color:var(--good)}.down{color:var(--bad)}.muted{color:var(--muted)}
+.tag{font-size:11px;border-radius:4px;padding:1px 6px;border:1px solid var(--line);color:var(--muted)}
+.tag.err{border-color:var(--bad);color:var(--bad)}.tag.warn{border-color:var(--warn);color:var(--warn)}
+.round{border-left:3px solid var(--line);padding:6px 0 6px 14px;margin:10px 0}
+.round h4{margin:0 0 4px;font-size:14px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:3px 0;align-items:center}
+.lbl{color:var(--muted);font-size:12px;min-width:44px}
+.cc{display:inline-flex;flex-direction:column;align-items:center;width:78px;margin:3px 4px 3px 0;vertical-align:top;position:relative}
+.cc .art{width:78px;height:78px;border-radius:10px;object-fit:cover;border:2px solid #3a4150;background:var(--panel2)}
+.cc.golden .art{border-color:#d9a53a;box-shadow:0 0 8px #d9a53a88}
+.cc .st{position:absolute;top:58px;left:0;right:0;display:flex;justify-content:space-between;padding:0 3px;font-weight:800;font-size:13px;text-shadow:0 0 3px #000,0 0 3px #000}
+.cc .st .a{color:#ffd24a}.cc .st .h{color:#ff6b62}
+.cc .nm{font-size:10.5px;line-height:1.15;color:var(--muted);text-align:center;margin-top:2px;max-height:2.3em;overflow:hidden}
+.cc.noimg .art{display:none}.cc.noimg{width:auto}.cc.noimg .nm{font-size:12px;color:var(--text);border:1px solid var(--line);border-radius:5px;padding:2px 6px}
+.cc.noimg .st{position:static}
+.cn{display:inline-flex;align-items:center;gap:6px;vertical-align:middle;font-weight:600}
+.cn .circ{width:26px;height:26px;border-radius:50%;flex:none}
+.tl{display:inline-flex;align-items:center;height:24px;min-width:200px;padding:0 10px;border-radius:5px;color:#fff;font-weight:600;
+  text-shadow:0 0 3px #000,0 0 2px #000;background-color:#262b35;background-repeat:no-repeat;background-position:right center;background-size:auto 100%;vertical-align:middle}
+.mini{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:1px 7px;font-size:12px;margin:1px}
+.mini.gold{border-color:#7a5a17;color:#ffd67a}
+.act{font-family:ui-monospace,Consolas,monospace;font-size:12.5px;padding:2px 0}
+.act .g{color:var(--accent);display:inline-block;width:62px}
+.act .t{display:inline-block;width:86px;font-weight:600}
+.BUY .t{color:var(--blue)}.SELL .t{color:var(--bad)}.LEVEL .t{color:var(--accent)}.REFRESH .t,.FREEZE .t{color:var(--muted)}
+.combat{margin-top:4px;padding:5px 9px;border-radius:6px;background:var(--panel2);font-size:13px}
+.combat.WIN{border-left:3px solid var(--good)}.combat.LOSS{border-left:3px solid var(--bad)}.combat.TIE{border-left:3px solid var(--muted)}
+.feed{max-height:60vh;overflow:auto}
+pre{white-space:pre-wrap;background:var(--panel2);padding:10px;border-radius:6px;font-size:12px;max-height:260px;overflow:auto}
+.hide{display:none}
+.flag{float:right;opacity:.55}.round:hover .flag{opacity:1}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:20;padding:16px}
+.modal.show{display:flex}
+.modal .box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;width:min(560px,100%)}
+.modal textarea{width:100%;min-height:110px;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:8px;padding:10px;font:inherit}
+.shot{display:inline-block;margin:4px 8px 4px 0;vertical-align:top;text-align:center;font-size:12px}
+.shot img{width:220px;border-radius:6px;border:1px solid var(--line);display:block;cursor:zoom-in}
+.tip{font-size:12px;color:var(--muted);margin-top:8px}
+.focus{border:1px solid var(--accent);background:linear-gradient(135deg,#2a2112,#171a21)}
+.focus .big{font-size:22px;font-weight:700;margin:4px 0 6px}
+.habit{display:grid;grid-template-columns:90px 1fr;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.habit:last-child{border-bottom:0}
+.cost{font-size:22px;font-weight:700;color:var(--bad)}.cost.ok{color:var(--good)}
+.cost small{display:block;font-size:11px;color:var(--muted);font-weight:400}
+.ev{font-size:11px;border-radius:4px;padding:1px 6px;margin-left:6px;border:1px solid var(--line);color:var(--muted)}
+.bars{display:flex;align-items:flex-end;gap:4px;height:130px;padding-top:6px}
+.bar{flex:1;min-width:14px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;font-size:10px;color:var(--muted)}
+.bar .b{width:100%;border-radius:3px 3px 0 0}
+.bar .r{margin-top:3px;white-space:nowrap}
+.verdicts{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin-bottom:10px}
+.verdicts>div{background:var(--panel2);border-radius:8px;padding:8px 10px;display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.verdicts span:first-child{display:block;width:100%;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.good{color:var(--good)}.warn{color:var(--warn)}.bad{color:var(--bad)}
+details.mo{border-bottom:1px solid var(--line)}
+details.mo summary{display:grid;grid-template-columns:44px 96px 1fr 70px;gap:8px;align-items:center;padding:7px 2px;cursor:pointer;list-style:none}
+details.mo summary::-webkit-details-marker{display:none}
+details.mo summary:hover{background:var(--panel2)}
+.mo-r{font-weight:700;color:var(--muted)}.mo-k{font-size:12px;color:var(--muted)}
+.mo-t{line-height:1.9}.mo-x{text-align:right;font-weight:700;color:var(--bad)}
+.mo-t .ord{margin-top:2px}
+.mo-d{padding:4px 8px 10px 152px;font-size:12.5px;color:var(--muted);line-height:1.6}
+.mo-g{padding:0 8px 2px 152px;font-size:12px;color:var(--muted)}
+@media (max-width:700px){details.mo summary{grid-template-columns:36px 1fr 60px}.mo-k{display:none}.mo-d,.mo-g{padding-left:8px}}
+.testbadge{background:#2b2350;border:1px solid #6d5bd0;color:#c9bfff;border-radius:6px;padding:2px 8px;font-size:12px;margin-left:8px}
+.toast{position:fixed;bottom:18px;right:18px;background:var(--good);color:#06210f;padding:8px 14px;border-radius:8px;font-weight:600;display:none}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-right:6px}
+.dot.on{background:var(--good);box-shadow:0 0 6px var(--good)}
+@media (max-width:640px){main{padding:12px}.act .t{width:70px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>bg<span>-coach</span></h1>
+  <nav>
+    <button data-tab="live" class="on">Live</button>
+    <button data-tab="improve">Improve</button>
+    <button data-tab="games">Games</button>
+    <button data-tab="health">Health <span id="healthBadge"></span></button>
+  </nav>
+  <span class="spacer"></span>
+  <span class="chip" id="verChip">version…</span>
+  <button class="btn" id="btnArchive" title="Copy new Hearthstone logs into the archive">Archive logs</button>
+  <button class="btn primary" id="btnImport" title="Parse archived logs that are not imported yet">Import games</button>
+  <button class="btn" id="btnQuit" title="Stop bg-coach (app, overlay and recording)">Quit</button>
+</header>
+<div class="banner" id="banner"><span class="msg" id="bannerMsg"></span>
+  <button class="btn small" id="bannerCopy">Copy report for Claude</button>
+  <button class="btn small" id="bannerClose">✕</button></div>
+
+<main>
+  <!-- LIVE -->
+  <section id="tab-live">
+    <div class="card">
+      <h3><span class="dot" id="liveDot"></span>Live game <span id="testBadge"></span> <span class="tag" id="checkTag" title="Every buy/sell/level/play/refresh is verified against what the game logged next">checks: -</span>
+        <button class="btn small" style="float:right" onclick="flag('live')">⚑ Something missing or wrong?</button></h3>
+      <div id="liveStatus" class="muted">Connecting…</div>
+      <div class="grid" style="margin-top:10px"><div class="grid" id="liveStats" style="grid-column:1/-1"></div><div id="liveStrength"></div></div>
+      <div id="liveBoard" style="margin-top:10px"></div>
+      <div class="tip">Something looks wrong while you play? Just press <b>Print Screen</b> in Hearthstone. The screenshot is
+        attached to that round automatically. Report it after the game from the game's page (📷 + ⚑).</div>
+    </div>
+    <div id="liveAdvice"></div>
+    <div class="card"><h3>This game</h3><div class="feed" id="liveFeed"><span class="muted">Waiting for a game…</span></div></div>
+  </section>
+
+  <!-- IMPROVE -->
+  <section id="tab-improve" class="hide"><div id="improveBody"><span class="muted">Analysing your games…</span></div></section>
+
+  <!-- GAMES -->
+  <section id="tab-games" class="hide">
+    <div class="grid" id="gamesStats" style="margin-bottom:14px"></div>
+    <div class="card"><h3>Your games</h3>
+      <label class="muted"><input type="checkbox" id="showOther"> show other accounts / duos</label>
+      <table id="gamesTable"><thead><tr><th>Date</th><th>Hero</th><th>Place</th><th>MMR</th><th>Rounds</th><th>Build</th><th>Health</th><th>📷</th></tr></thead><tbody></tbody></table>
+    </div>
+  </section>
+
+  <!-- GAME DETAIL -->
+  <section id="tab-game" class="hide">
+    <button class="btn small" onclick="show('games')">← back</button>
+    <div id="gameDetail"></div>
+  </section>
+
+  <!-- HEALTH -->
+  <section id="tab-health" class="hide">
+    <div class="card"><h3>How errors work</h3>
+      <div class="muted">Anything that breaks is saved with its exact log line and traceback. Click <b>Copy report</b> and
+      paste it into Claude Code; that's all the context needed for a fix. Data checks run on every game automatically.</div></div>
+    <div class="grid" id="healthStats" style="margin-bottom:14px"></div>
+    <div class="card"><h3>Errors <button class="btn small" id="btnClear" style="float:right">Clear</button></h3><div id="errList"></div></div>
+    <div class="card"><h3>Games with data issues</h3><div id="issueList"></div></div>
+    <div class="card hide" id="jobCard"><h3>Job output</h3><pre id="jobLog"></pre></div>
+  </section>
+</main>
+<div class="modal" id="flagModal"><div class="box">
+  <h3 style="margin-top:0">⚑ Report a problem <span class="muted" id="flagWhere"></span></h3>
+  <div class="muted" style="margin-bottom:8px">Describe what happened in the game that the app shows wrong or not at all.
+    Examples: "I refreshed 3 times, only 2 shown" · "round should start at 7 gold" · "my Dark Gift pick is missing" · "combat says win, I lost".</div>
+  <div id="flagShot"></div>
+  <textarea id="flagNote" placeholder="What did you see in the game?"></textarea>
+  <div class="row" style="justify-content:flex-end;margin-top:10px">
+    <button class="btn" onclick="$('#flagModal').classList.remove('show')">Cancel</button>
+    <button class="btn primary" id="flagSend">Create report &amp; copy</button></div>
+  <div class="muted" id="flagResult" style="margin-top:8px;font-size:12px"></div>
+</div></div>
+<div class="toast" id="toast">Copied, paste it into Claude Code</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let NAMES = {};
+const nm = id => id ? esc(NAMES[id] || id) : "?";
+
+// ---------- error handling: every failure becomes a banner with a one-click report
+let bannerReport = null;
+function showError(msg, report){ $("#bannerMsg").textContent = msg; bannerReport = report; $("#banner").classList.add("show"); refreshHealthBadge(); }
+$("#bannerClose").onclick = () => $("#banner").classList.remove("show");
+$("#bannerCopy").onclick = async () => { if (bannerReport) copy(await bannerReport()); };
+async function copy(text){ await navigator.clipboard.writeText(text); const t=$("#toast"); t.style.display="block"; setTimeout(()=>t.style.display="none",1800); }
+async function reportFor(q){ const r = await fetch("/api/report?"+q); return (await r.json()).text; }
+window.addEventListener("error", e => clientError(e.message, e.error && e.error.stack, "window"));
+window.addEventListener("unhandledrejection", e => clientError(String(e.reason), e.reason && e.reason.stack, "promise"));
+async function clientError(message, stack, where){
+  try{ const r = await fetch("/api/errors/client",{method:"POST",body:JSON.stringify({message,stack,where})});
+       const j = await r.json(); showError("Page error: "+message, ()=>reportFor("error="+j.error_id)); }catch(_){}
+}
+async function api(url, opts){
+  const r = await fetch(url, opts);
+  const j = await r.json();
+  if (!r.ok){ showError(`Server error on ${url}: ${j.error}`, ()=>reportFor("error="+j.error_id)); throw new Error(j.error); }
+  return j;
+}
+
+// ---------- tabs
+function show(tab){
+  document.querySelectorAll("main > section").forEach(s => s.classList.add("hide"));
+  $("#tab-"+tab).classList.remove("hide");
+  document.querySelectorAll("nav button").forEach(b => b.classList.toggle("on", b.dataset.tab===tab));
+  if (tab==="games") loadGames(); if (tab==="health") loadHealth(); if (tab==="improve") loadImprove();
+  if (tab!=="game" && location.hash!=="#"+tab) history.replaceState(null,"","#"+tab);
+}
+// route from the URL hash right away (don't wait for "load": the live event stream never finishes loading)
+setTimeout(() => {
+  const h = decodeURIComponent(location.hash.slice(1));
+  if (h.startsWith("game=")) openGame(h.slice(5)); else if (["games","health","improve"].includes(h)) show(h);
+}, 0);
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => show(b.dataset.tab));
+
+// ---------- version
+api("/api/version").then(v => {
+  const c = $("#verChip");
+  c.innerHTML = `Patch <b>${esc(v.patch||"?")}</b> · build ${esc(v.client_build||"?")}` + (v.outdated ? ` · ${esc(v.latest_patch)} available` : "");
+  c.title = `${v.patch_name||""} (${v.patch_date||""})\nLive pool: ${Object.entries(v.pool||{}).map(([k,n])=>n+" "+k+"s").join(", ")}`;
+  if (v.outdated) c.classList.add("warn");
+}).catch(()=>{});
+
+// ---------- jobs
+async function runJob(kind, body){
+  const {id} = await api("/api/jobs/"+kind,{method:"POST",body:JSON.stringify(body||{})});
+  const btn = kind==="archive" ? $("#btnArchive") : $("#btnImport"); const label = btn.textContent;
+  btn.disabled = true;
+  $("#jobCard").classList.remove("hide");
+  for(;;){
+    await new Promise(r=>setTimeout(r,700));
+    const j = await api("/api/jobs/"+id);
+    btn.textContent = j.status==="running" ? (j.log.at(-1)||"working…").slice(0,40) : label;
+    $("#jobLog").textContent = j.log.join("\n");
+    if (j.status!=="running"){
+      btn.disabled=false;
+      if (j.status==="failed") showError(`${kind} failed: ${j.error.error}`, ()=>reportFor("error="+j.error.id));
+      if (!$("#tab-games").classList.contains("hide")) loadGames();
+      refreshHealthBadge(); return j;
+    }
+  }
+}
+$("#btnArchive").onclick = () => runJob("archive");
+$("#btnImport").onclick = () => runJob("import");
+$("#btnQuit").onclick = async () => {
+  if (!confirm("Quit bg-coach? Games you play after this won't be recorded until you start it again.")) return;
+  try { await fetch("/api/quit", {method:"POST"}); } catch(_) {}
+  document.body.innerHTML = `<main style="padding:60px;text-align:center"><h2>bg-coach stopped</h2><p class="muted">Start it again from the bg-coach icon. You can close this tab.</p></main>`;
+};
+
+// ---------- render helpers
+const placeTag = p => p ? `<span class="place p${p}">${p}</span>` : `<span class="tag err">?</span>`;
+const imgOK = id => id && /^[A-Za-z0-9_]+$/.test(id);
+// card art chip: picture + attack/health + small name (falls back to text if no art exists)
+function chip(c){
+  const id = c.card_id ?? c; const stats = c.atk!==undefined && c.type===undefined;
+  const st = stats ? `<div class="st"><span class="a">${c.atk}</span><span class="h">${c.hp}</span></div>` : "";
+  return `<div class="cc ${c.golden?"golden":""}" title="${nm(id)}${stats?` ${c.atk}/${c.hp}`:""}">`
+    + (imgOK(id) ? `<img class="art" loading="lazy" src="/api/card/art/${id}" onerror="this.parentNode.classList.add('noimg')">` : "")
+    + `${st}<div class="nm">${nm(id)}${c.golden?" ★":""}</div></div>`;
+}
+// small round picture + name
+const tl = id => !id ? "" : `<span class="cn">${imgOK(id)?`<img class="circ" loading="lazy" src="/api/card/circle64/${id}" onerror="this.remove()">`:""}${nm(id)}</span>`;
+const cardsImg = lst => (lst||[]).map(chip).join("") || `<span class="muted">-</span>`;
+const cards = (lst, cls="") => (lst||[]).map(c => `<span class="mini ${cls}">${nm(c.card_id ?? c)}${c.golden?"★":""}${c.atk!==undefined && (c.type===undefined)?` <span class="muted">${c.atk}/${c.hp}</span>`:""}</span>`).join("") || `<span class="muted">-</span>`;
+function actionHtml(a){
+  let txt = "";
+  switch(a.type){
+    case "BUY": txt = tl(a.target); break;
+    case "SELL": txt = tl(a.target) + (a.target_atk_hp?` <span class="muted">${a.target_atk_hp.join("/")}</span>`:""); break;
+    case "PLAY": txt = `${tl(a.card_id)} <span class="muted">→ slot ${a.position??"?"}</span>`; break;
+    case "CAST": case "HERO_POWER": txt = tl(a.card_id) + (a.target?` <span class="muted">→</span> ${tl(a.target)}`:""); break;
+    case "MOVE": txt = `${tl(a.card_id)} <span class="muted">${a.from}→${a.to}</span>`; break;
+    case "LEVEL": txt = `→ Tier ${a.to_tier}`; break;
+    case "ACTIVATE": txt = tl(a.card_id); break;
+    case "CHOICE": txt = `<span class="muted">${esc(a.kind)}:</span> ${(a.options||[]).map(o=> o===a.picked?`<b style="outline:2px solid var(--accent);border-radius:5px;display:inline-block">${tl(o)}</b>`:`<span style="opacity:.45">${tl(o)}</span>`).join(" ")}`; break;
+    default: txt = a.card_id ? tl(a.card_id) : "";
+  }
+  const shop = a.shop && a.type!=="END_TURN" ? `<div class="row"><span class="lbl">shop</span>${cardsImg(a.shop)}</div>` : "";
+  const g = a.gold!==undefined ? `${a.gold}g T${a.tier}` : "";
+  const na = a.applied===false ? ` style="text-decoration:line-through;opacity:.55" title="${esc(a.note||"")}"` : "";
+  return shop + `<div class="act ${a.type}"${na}><span class="g">${g}</span><span class="t">${esc(a.type==="CHOICE"?"PICK":a.type.replace("_"," "))}</span>${txt}</div>`;
+}
+function combatHtml(c){
+  if (!c) return "";
+  const res = c.result==="WIN" ? `won, dealt ${c.damage_dealt??"?"}` : c.result==="LOSS" ? `lost, took ${c.damage_taken}` : "tie";
+  const hp = v => v==null ? "?" : v;
+  return `<div class="combat ${c.result}">⚔ vs <b>${nm(c.opp_hero)}</b>: ${res} · HP ${hp(c.hp_before)}${c.armor_before?"+"+c.armor_before:""} → ${hp(c.hp_after)}${c.armor_after?"+"+c.armor_after:""}
+    ${c.opp_board&&c.opp_board.length?`<div class="row"><span class="lbl">them</span>${cardsImg(c.opp_board)}</div>`:""}</div>`;
+}
+let CUR_SHOTS = [];
+const shotHtml = (sh, label="") => `<div class="shot">${label}<img src="/api/screenshot?path=${encodeURIComponent(sh.path)}" loading="lazy"
+    onclick="window.open(this.src)"><span class="muted">${esc(sh.time.slice(11,19))}</span>
+    <button class="btn small" onclick='flag(CUR_GAME, ${sh.round ?? "null"}, ${JSON.stringify(sh.path)})'>⚑ Report this</button></div>`;
+function roundHtml(t, combat, ctx){
+  const shots = ctx==="game" ? CUR_SHOTS.filter(x=>x.round===t.round) : [];
+  const fl = ctx ? `<button class="btn small flag" onclick="flag(${ctx==="live"?"'live'":"CUR_GAME"}, ${t.round})">⚑ Report</button>` : "";
+  return `<div class="round"><h4>${fl}Round ${t.round} <span class="muted">· ${t.hp??"?"}${t.armor?"+"+t.armor:""} HP · Tier ${t.tier} · ${t.gold??"?"} gold</span></h4>
+    <div class="row"><span class="lbl">board</span>${cardsImg(t.board)}</div>
+    ${t.hand&&t.hand.length?`<div class="row"><span class="lbl">hand</span>${cardsImg(t.hand)}</div>`:""}
+    <div class="row"><span class="lbl">shop</span>${cardsImg(t.shop)}</div>
+    ${shots.length?`<div class="row"><span class="lbl">📷</span>${shots.map(x=>shotHtml(x)).join("")}</div>`:""}
+    ${(t.actions||[]).map(actionHtml).join("")}
+    ${combatHtml(combat)}</div>`;
+}
+
+// ---------- games
+let GAMES = [];
+async function loadGames(){
+  const j = await api("/api/games"); GAMES = j.games; Object.assign(NAMES, j.names); renderGames();
+}
+$("#showOther").onchange = renderGames;
+function renderGames(){
+  const all = $("#showOther").checked;
+  const rows = GAMES.filter(g => all || (g.mine && !g.duos));
+  const mine = GAMES.filter(g => g.mine && !g.duos && g.placement);
+  const avg = mine.length ? (mine.reduce((s,g)=>s+g.placement,0)/mine.length).toFixed(2) : "-";
+  const top4 = mine.length ? Math.round(100*mine.filter(g=>g.placement<=4).length/mine.length)+"%" : "-";
+  const last = mine.find(g=>g.mmr_after);
+  $("#gamesStats").innerHTML = [["Games", mine.length],["Avg place", avg],["Top 4", top4],["Wins", mine.filter(g=>g.placement===1).length],["MMR", last?last.mmr_after:"-"]]
+    .map(([k,v])=>`<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+  $("#gamesTable tbody").innerHTML = rows.map(g => {
+    const d = g.mmr_after && g.mmr_before ? g.mmr_after-g.mmr_before : null;
+    const mmr = d===null ? `<span class="muted">-</span>` : `${g.mmr_after} <span class="${d>=0?"up":"down"}">${d>=0?"+":""}${d}</span>`;
+    const h = g.errors ? `<span class="tag err">${g.errors} error${g.errors>1?"s":""}</span>` : g.warnings ? `<span class="tag warn">${g.warnings} warn</span>` : `<span class="tag">ok</span>`;
+    const who = g.mine ? "" : ` <span class="tag">other acct</span>`; const duo = g.duos?` <span class="tag">duos</span>`:"";
+    return `<tr class="click" onclick="openGame('${esc(g.file)}')"><td>${esc((g.start||"").replace("T"," ").slice(0,16))}</td><td>${nm(g.hero)}${who}${duo}</td><td>${placeTag(g.placement)}</td><td>${mmr}</td><td>${g.rounds}</td><td class="muted">${g.build}</td><td>${h}</td><td>${g.shots?`<span class="tag">📷 ${g.shots}</span>`:""}</td></tr>`;
+  }).join("") || `<tr><td colspan="8" class="muted">No games yet: click <b>Import games</b>.</td></tr>`;
+}
+let CUR_GAME = null;
+async function openGame(file){
+  CUR_GAME = file;
+  CUR_SHOTS = [];
+  const g = await api("/api/games/"+encodeURIComponent(file)); Object.assign(NAMES, g.names||{});
+  CUR_SHOTS = g.screenshots || [];
+  const combats = {}; (g.combats||[]).forEach(c => combats[c.round]=c);
+  const iss = g.issues||[];
+  const hdt = g.hdt ? `HDT: place ${g.hdt.placement}, MMR ${g.hdt.rating} → ${g.hdt.rating_after}` : "not in HDT";
+  $("#gameDetail").innerHTML = `
+    <div class="card" style="margin-top:12px">
+      <h3>${esc((g.start||"").replace("T"," ").slice(0,16))} · build ${g.build}</h3>
+      <div style="font-size:18px">${placeTag(g.placement)} <b>${nm(g.hero)}</b> <span class="muted">· ${(g.turns||[]).length} rounds · ${esc(hdt)}</span></div>
+      <div class="row" style="margin-top:6px"><span class="lbl">offered</span>${(g.hero_offers||[]).map(h=>chip({card_id:h, golden:h===g.hero})).join("")}</div>
+      <div class="row"><span class="lbl">final</span>${cardsImg(g.final_board)}</div>
+      ${g.anomaly?`<div class="row"><span class="lbl">anomaly</span><span class="mini">${nm(g.anomaly)}</span></div>`:""}
+    </div>
+    ${iss.length?`<div class="card"><h3>Data issues <button class="btn small" style="float:right" id="gameReport">Copy report for Claude</button></h3>
+      ${iss.map(i=>`<div><span class="tag ${i.severity==="error"?"err":"warn"}">${i.severity}</span> ${esc(i.message)}</div>`).join("")}</div>`:""}
+    ${coachHtml(g)}
+    ${CUR_SHOTS.length?`<div class="card"><h3>📷 Your screenshots in this game</h3>${CUR_SHOTS.map(x=>shotHtml(x, `<b>Round ${x.round??"?"}</b>`)).join("")}</div>`:""}
+    <div class="card"><h3>Timeline</h3>${(g.turns||[]).map(t=>roundHtml(t, combats[t.round], "game")).join("")}</div>`;
+  history.replaceState(null,"","#game="+encodeURIComponent(file));
+  if (iss.length) $("#gameReport").onclick = async()=>copy(await reportFor("game="+encodeURIComponent(file)));
+  show("game");
+}
+
+
+// ---------- moments (one line each, details on click) — shared by game page + Improve
+const KIND_NAME = {DISCOVER:"Discover", TRIPLE_DISCOVER:"Triple reward", DARK_GIFT_PICK:"Dark Gift", HERO_POWER_PICK:"Hero power pick", TRINKET_PICK:"Trinket"};
+const FIT_MARK = lv => lv==null ? "" : ({3:"✓ fits", 2:"· flexible", 1:"~ side", 0:"✗ off"})[lv];
+const icon = id => imgOK(id) ? `<img class="circ" style="width:30px;height:30px;margin-right:2px;vertical-align:middle" src="/api/card/circle64/${id}" title="${nm(id)}">` : nm(id);
+const num = (v, good) => `<b class="${good?"good":""}">${v}</b>`;
+function momentParts(d){
+  // returns [label, one-line html, impact text, details html]
+  const det = [];
+  if (d.calc) det.push(`🧮 ${esc(d.calc)}`);
+  if (d.sim_note) det.push(`🎯 ${esc(d.sim_note)}`);
+  if (d.kind==="buy"){
+    det.unshift(`Fit: ${nm(d.you)}: ${esc(d.you_fit||"")} · ${nm(d.better)}: ${esc(d.better_fit||"")}`);
+    det.push(`Shop you could afford (${d.gold}g): ${Object.entries(d.values||{}).map(([c,v])=>`${nm(c)} ${v??"?"}`).join(" · ")}`);
+    const simTxt = d.sim ? (Math.abs(d.sim.gain)<=3 ? " · same fight result" : d.sim.gain<0 ? " · <span class='good'>your buy won the fight sim</span>" : ` · fight sim ${Math.round(d.sim.you_win)}%→${Math.round(d.sim.alt_win)}%`) : "";
+    return ["Buy", `bought ${tl(d.you)} ${num(d.you_val)} · ${tl(d.better)} ${num(d.better_val,true)} was affordable${simTxt}`, `−${d.diff.toFixed(2)}`, det];
+  }
+  if (d.kind==="pick"){
+    if (d.picked_fit) det.unshift(`Fit: ${nm(d.you||d.picked)}: ${esc(d.picked_fit)} · ${nm(d.better||d.best)}: ${esc(d.best_fit||"")}`);
+    const k = KIND_NAME[d.pick_kind||d.kind_name] || "Pick";
+    return [k, `took ${tl(d.you)} ${num(d.you_val)} · ${tl(d.better)} ${num(d.better_val,true)} fit as well`, `−${d.diff.toFixed(2)}`, det];
+  }
+  if (d.kind==="hero"){
+    return ["Hero", `took ${tl(d.you)} ${num(d.you_val)} · best offered ${tl(d.better)} ${num(d.better_val,true)}`, `−${d.diff.toFixed(2)}`, det];
+  }
+  if (d.kind==="fight"){
+    const bb = d.bb ? ` · Bob's Buddy ${Math.round(d.bb.loss)}% loss` : "";
+    det.unshift(`That turn: ${esc(d.turn||"")}`);
+    if (d.sim) det.push(`🎯 Simulated: ${Math.round(d.sim.win)}% win · ${Math.round(d.sim.tie)}% tie · ${Math.round(d.sim.loss)}% loss`);
+    return ["Fight", `lost to ${tl(d.opp)} · board <b class="bad">${Math.round(d.ratio*100)}%</b> of same-hero avg${bb}`, `−${d.damage} HP`, det];
+  }
+  if (d.kind==="position"){
+    return ["Order", `same minions, other order: <b>${Math.round(d.base_win)}%</b> → ${num(Math.round(d.best_win)+"%",true)} win
+      <div class="ord">${(d.actual||[]).map(icon).join("")}<span class="muted" style="margin:0 8px">→</span>${(d.order||[]).map(icon).join("")}</div>`, `+${Math.round(d.gain)}%`, det];
+  }
+  if (d.kind==="level") return ["Level", esc(d.calc), `−${d.damage||0} HP`, []];
+  return [d.kind, esc(d.calc||""), "", det];
+}
+function momentHtml(d, withGame){
+  const [label, line, impact, det] = momentParts(d);
+  const game = withGame ? `<div class="mo-g">${esc((d.start||"").slice(0,16).replace("T"," "))} · ${nm(d.hero)} · place ${d.placement} · <a href="#" onclick="openGame('${esc(d.file)}');return false">open game</a></div>` : "";
+  return `<details class="mo"><summary><span class="mo-r">${d.round?"R"+d.round:"Start"}</span><span class="mo-k">${esc(label)}</span>
+    <span class="mo-t">${withGame?`<span class="muted" style="font-size:12px">${icon(d.hero)}${esc((d.start||"").slice(5,10))} #${d.placement} · </span>`:""}${line}</span><span class="mo-x">${impact}</span></summary>${game}<div class="mo-d">${det.map(x=>`<div>${x}</div>`).join("")}</div></details>`;
+}
+function statsTableHtml(rows){
+  const f = (r,v) => v==null ? "–" : r.pct ? Math.round(v*100)+"%" : v;
+  return `<table><thead><tr><th>Stat</th><th>You (all games)</th><th>Your top-4 games</th><th>Your 5th–8th games</th><th>Meta at your MMR</th><th></th></tr></thead><tbody>
+    ${rows.map(r=>`<tr><td>${esc(r.metric)}</td><td><b>${f(r,r.you)}</b></td><td style="color:var(--good)">${f(r,r.top4)}</td><td style="color:var(--bad)">${f(r,r.bottom4)}</td><td>${f(r,r.meta)}</td><td class="muted" style="font-size:12px">${esc(r.note)}</td></tr>`).join("")}</tbody></table>`;
+}
+
+// ---------- coaching
+const pct = v => v==null ? "–" : Math.round(v*100)+"%";
+function strengthBars(strength){
+  if (!strength || !strength.length) return "";
+  const max = Math.max(1.6, ...strength.map(s=>s.ratio||0));
+  return `<div class="bars" style="height:96px">${strength.map(s=>{
+    const r = s.ratio; const h = r==null ? 4 : Math.max(4, 100*r/max);
+    const col = r==null ? "var(--line)" : r>=1 ? "var(--good)" : r>=0.8 ? "var(--warn)" : "var(--bad)";
+    const res = s.result==="WIN" ? "W" : s.result==="LOSS" ? "L" : "T";
+    const bb = s.bb ? ` Bob's Buddy: ${Math.round(s.bb.win)}% win / ${Math.round(s.bb.loss)}% loss.` : "";
+    const luck = s.bb && s.bb.win>=50 && s.result==="LOSS" ? "🎲" : s.bb && s.bb.loss>=50 && s.result==="WIN" ? "🍀" : "";
+    return `<div class="bar" title="Round ${s.round}: your board ${s.mine} stats vs ${s.meta??"?"} average on this hero (${pct(r)}). ${s.result}.${bb}">
+      <span>${pct(r)}</span><div class="b" style="height:${h}px;background:${col}"></div><span class="r">R${s.round} ${res}${luck}</span></div>`;}).join("")}</div>
+    <div class="muted" style="font-size:11.5px;margin-top:2px">Your board ÷ same-hero average at each fight · 🎲 lost while favoured · 🍀 won as underdog</div>`;
+}
+function coachHtml(g){
+  const c = g.coach;
+  if (!c) return g.coach_error ? `<div class="card"><h3>Coach</h3><span class="muted">${esc(g.coach_error)}</span></div>` : "";
+  const hp = c.hero_pick, sp = c.strength_phase, tr = c.tier_round||{};
+  const col = v => v==null ? "" : v>=1 ? "good" : v>=0.8 ? "warn" : "bad";
+  const heroV = !hp ? "" : hp.loss<=0.05 ? `<span class="good">✓ best hero offered</span>` : `${tl(g.hero)} ${hp.picked_avg} vs ${tl(hp.best)} <b class="good">${hp.best_avg}</b>`;
+  const luck = c.luck && c.luck.fights_with_odds ? `🎲 ${c.luck.unlucky_losses.length} · 🍀 ${c.luck.lucky_wins.length}` : "–";
+  // one merged, chronological list: weaker picks + every decision moment
+  const picks = (c.picks||[]).filter(p=>p.loss>=0.15).map(p=>({kind:"pick", pick_kind:p.kind, round:p.round, you:p.picked, you_val:p.picked_avg,
+     better:p.best, better_val:p.best_avg, diff:p.loss, picked_fit:p.picked_fit, best_fit:p.best_fit,
+     calc:`Average placement at your MMR when taken on round ${p.round}: ${nm(p.picked)} ${p.picked_avg}, ${nm(p.best)} ${p.best_avg}.`}));
+  const heroM = hp && hp.loss>=0.25 ? [{kind:"hero", round:0, you:g.hero, you_val:hp.picked_avg, better:hp.best, better_val:hp.best_avg, diff:hp.loss,
+     calc:`Average placement at your MMR (top ${c.bracket}%).`}] : [];
+  const moments = [...heroM, ...picks, ...(c.decisions||[])].sort((a,b)=>a.round-b.round);
+  return `<div class="card"><h3>Coach</h3>
+    <div class="verdicts">
+      <div><span>Hero</span>${heroV||"–"}</div>
+      <div><span>Board vs same hero</span><b class="${col(sp.early)}">${pct(sp.early)}</b> early · <b class="${col(sp.mid)}">${pct(sp.mid)}</b> mid · <b class="${col(sp.late)}">${pct(sp.late)}</b> late</div>
+      <div><span>Tiers</span>T4 ${tr[4]?"R"+tr[4]:"–"} · T5 ${tr[5]?"R"+tr[5]:"–"} · T6 ${tr[6]?"R"+tr[6]:"–"}</div>
+      <div><span>Luck</span>${luck}</div>
+    </div>
+    ${strengthBars(c.strength)}
+    <h4 style="margin:14px 0 4px">Moments to review <span class="muted" style="font-weight:400">(${moments.length}; click one for details)</span></h4>
+    ${moments.length ? moments.map(d=>momentHtml(d,false)).join("") : `<div class="muted">Nothing stands out in this game.</div>`}
+  </div>`;
+}
+function trendHtml(r){
+  const t = (r.trend||[]).filter(x=>x.mid!=null); if (t.length < 4) return "";
+  const last = t.slice(-5), prev = t.slice(-15,-5);
+  const avg = a => a.length ? a.reduce((s,x)=>s+x.mid,0)/a.length : null;
+  const a1 = avg(last), a0 = avg(prev);
+  const delta = a0 ? Math.round((a1-a0)*100) : null;
+  const max = Math.max(1.4, ...t.map(x=>x.mid));
+  return `<div class="card"><h3>Is the focus improving? Board strength in rounds 6–9, game by game</h3>
+    <div class="bars" style="height:110px">${t.slice(-30).map(x=>{const col=x.mid>=1?"var(--good)":x.mid>=0.8?"var(--warn)":"var(--bad)";
+      return `<div class="bar" style="cursor:pointer" onclick="openGame('${esc(x.file)}')" title="${esc((x.start||"").slice(0,16))} ${nm(x.hero)}: ${Math.round(x.mid*100)}%, place ${x.placement}">
+        <div class="b" style="height:${Math.max(4,90*x.mid/max)}px;background:${col}"></div><span class="r">${x.placement}</span></div>`}).join("")}</div>
+    <div class="muted" style="font-size:12px">Each bar = one game (oldest left, newest right), number under it = your placement. Click to open the game.</div>
+    <div style="margin-top:6px">Last 5 games: <b>${Math.round(a1*100)}%</b>${a0?` vs ${Math.round(a0*100)}% in the 10 before (${delta>=0?`<span style="color:var(--good)">+${delta}</span>`:`<span style="color:var(--bad)">${delta}</span>`} points)`:""}</div></div>`;
+}
+async function loadImprove(){
+  const r = await api("/api/improve"); Object.assign(NAMES, r.names||{});
+  const stats = [["Games analysed", r.games],["Avg place", r.avg_placement],["Your MMR", r.mmr??"?"],["Compared with", `top ${r.bracket}%`]];
+  const top = r.decision_summary[0];
+  $("#improveBody").innerHTML = `
+    <div class="grid" style="margin-bottom:14px">${stats.map(([k,v])=>`<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("")}</div>
+    ${top?`<div class="card focus"><h3>What to work on (last ${r.recent_games} games)</h3>
+      ${r.decision_summary.map(s=>`<div class="row"><b style="min-width:42px">${s.count}×</b>${esc(s.label)} <span class="muted">(${s.per_game} per game)</span></div>`).join("")}
+      <div class="muted" style="margin-top:6px;font-size:12px">Ordered by total size: places for buys/picks/heroes, HP lost × how far behind for fights.</div></div>`:""}
+    <div class="card"><h3>Decisions to learn from: biggest first</h3>
+      ${r.decisions.map(d=>momentHtml(d,true)).join("") || '<span class="muted">Nothing stands out in your recent games.</span>'}
+      <div class="muted" style="font-size:12px;margin-top:6px">Numbers = average placement of players at your MMR who played that card / hero on that round (lower is better). They're correlations from ${(r.meta_games||0).toLocaleString()} games, not rules: you may have had a plan the shop doesn't show. Buys are only listed when you couldn't afford both cards and didn't buy the better one later that turn; cards that break your tribe synergy are never suggested.</div></div>
+    ${trendHtml(r)}
+    <div class="card"><h3>Your stats compared (context, not advice)</h3>${statsTableHtml(r.stats)}
+      <div class="muted" style="font-size:12px;margin-top:6px">Medians. Top-4 vs 5th–8th shows what differs between your good and bad games; it doesn't say why (e.g. leveling late can be the right call at low HP).</div></div>`;
+}
+
+// ---------- health
+async function loadHealth(){
+  const h = await api("/api/health");
+  const a = h.hdt_agreement;
+  $("#healthStats").innerHTML = [["Games parsed", h.total_games],["HDT-verified", a.matched],["Placement agrees", `${a.placement}/${a.matched}`],["Board agrees", `${a.board}/${a.matched}`],["Errors", h.errors.length]]
+    .map(([k,v])=>`<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+  $("#errList").innerHTML = h.errors.map(e => `<div class="row" style="border-bottom:1px solid var(--line);padding:6px 0">
+      <span class="tag err">${esc(e.kind)}</span><span class="muted">${esc(e.time)}</span><span style="flex:1">${esc(e.error).slice(0,180)}</span>
+      <button class="btn small" onclick="copyErr('${e.id}')">Copy report</button></div>`).join("") || `<span class="muted">No errors 🎉</span>`;
+  $("#issueList").innerHTML = h.games.map(g => `<div class="row" style="border-bottom:1px solid var(--line);padding:6px 0">
+      <span class="muted">${esc((g.start||"").replace("T"," ").slice(0,16))}</span>${placeTag(g.placement)}<span style="flex:1">${g.issues.map(i=>`<span class="tag ${i.severity==="error"?"err":"warn"}">${esc(i.code)}</span>`).join(" ")}</span>
+      <button class="btn small" onclick="openGame('${esc(g.file)}')">Open</button>
+      <button class="btn small" onclick="copyGame('${esc(g.file)}')">Copy report</button></div>`).join("") || `<span class="muted">All your games pass the checks.</span>`;
+  setBadge(h.errors.length);
+}
+window.copyErr = async id => copy(await reportFor("error="+id));
+window.copyGame = async f => copy(await reportFor("game="+encodeURIComponent(f)));
+$("#btnClear").onclick = async()=>{ await api("/api/errors/clear",{method:"POST"}); loadHealth(); };
+function setBadge(n){ $("#healthBadge").innerHTML = n ? `<span class="tag err">${n}</span>` : ""; }
+async function refreshHealthBadge(){ try{ const h = await (await fetch("/api/health")).json(); setBadge(h.errors.length);}catch(_){} }
+refreshHealthBadge();
+
+
+// ---------- live advice + post-game summary
+function showOffers(d){
+  const vals = d.values||{}; if (!Object.values(vals).some(v=>v!=null)) return;
+  const title = d.kind==="HERO_PICK" ? "Hero pick: average placement at your MMR" : `${esc((d.kind||"").replace(/_/g," ").toLowerCase())}: average placement on round ${d.round}`;
+  $("#liveAdvice").innerHTML = `<div class="card focus"><h3>${title} <span class="muted">(lower is better)</span></h3>
+    <div class="row">${(d.options||[]).map(o=>`<div style="display:inline-block;text-align:center">${chip({card_id:o, golden:o===d.best})}
+      <div style="font-size:15px;font-weight:700;${o===d.best?"color:var(--good)":""}">${vals[o]??"?"}${o===d.best?" ★":""}</div>
+      ${d.fit&&d.fit[o]?`<div class="muted" style="font-size:11px;max-width:90px" title="${esc(d.fit[o][1])}">${FIT_MARK(d.fit[o][0])}</div>`:""}</div>`).join("")}</div>
+    ${d.fit?`<div class="muted" style="font-size:12px">★ = lowest average among the options that fit your build best (✓ fits · flexible · ~ side tribe · ✗ off)</div>`:""}</div>`;
+}
+function showStrength(d){
+  if (d.strength==null) return;
+  const r = d.strength, col = r>=1?"var(--good)":r>=0.8?"var(--warn)":"var(--bad)";
+  const focus = d.round>=6 && d.round<=9 ? " · your focus" : "";
+  $("#liveStrength").innerHTML = `<div class="stat"><div class="k">Board vs same hero (R${d.round})${focus}</div><div class="v" style="color:${col}">${Math.round(r*100)}%</div></div>`;
+}
+function showSummary(d){
+  const s = d.strength||{}; const p = v => v==null?"–":Math.round(v*100)+"%";
+  const mmr = d.mmr&&d.mmr_before ? ` · MMR ${d.mmr_before} → ${d.mmr}` : "";
+  const hero = d.hero_loss==null ? "" : d.hero_loss<=0 ? "best hero offered ✓" : `hero ${d.hero_loss} worse than ${nm(d.hero_best)}`;
+  $("#liveAdvice").innerHTML = `<div class="card focus"><h3>Game over: coach summary</h3>
+    <div class="big" style="font-size:20px">${placeTag(d.placement)} ${nm(d.hero)}${mmr}</div>
+    <div class="row"><span class="mini">board early ${p(s.early)}</span><span class="mini">mid ${p(s.mid)} (your focus)</span><span class="mini">late ${p(s.late)}</span>
+      <span class="mini">${hero}</span><span class="mini">${d.weak_picks} of ${d.picks} picks clearly weaker than an option</span></div>
+    ${d.file?`<div style="margin-top:6px"><button class="btn small" onclick="openGame('${esc(d.file)}')">Open the full game →</button></div>`:`<div class="muted" style="margin-top:6px">(test replay, not saved)</div>`}</div>`;
+}
+
+// ---------- user problem reports
+let FLAG = null;
+window.flag = (target, round, screenshot) => {
+  FLAG = target === "live" ? {live:true} : {game:target, round, screenshot};
+  $("#flagWhere").textContent = (target==="live" ? "· live game, current round" : `· round ${round}`) + (screenshot ? " · with your screenshot" : "");
+  $("#flagShot").innerHTML = screenshot ? `<img src="/api/screenshot?path=${encodeURIComponent(screenshot)}" style="width:100%;border-radius:6px;margin-bottom:8px">` : "";
+  $("#flagNote").value = ""; $("#flagResult").textContent = "";
+  $("#flagModal").classList.add("show"); $("#flagNote").focus();
+};
+$("#flagSend").onclick = async () => {
+  const r = await api("/api/problem",{method:"POST",body:JSON.stringify({...FLAG, note:$("#flagNote").value})});
+  if (r.error){ $("#flagResult").textContent = r.error; return; }
+  await copy(r.text);
+  $("#flagResult").innerHTML = `Copied! Paste it into Claude Code.<br>Raw log of that round saved to <code>${esc(r.slice)}</code>`;
+};
+
+// ---------- live
+const live = {turns:[], combats:{}, round:null};
+function renderLive(){
+  const feed = live.turns.slice().reverse().map(t => roundHtml(t, live.combats[t.round], "live")).join("");
+  $("#liveFeed").innerHTML = feed || `<span class="muted">Waiting for a game…</span>`;
+}
+function liveStats(s){
+  if (!s || s.gold===undefined) return;
+  $("#liveStats").innerHTML = [["Round", s.round],["HP", s.hp],["Tier", s.tier],["Gold", s.gold]]
+    .map(([k,v])=>`<div class="stat"><div class="k">${k}</div><div class="v">${v??"-"}</div></div>`).join("");
+  $("#liveBoard").innerHTML = `<div class="row"><span class="lbl">board</span>${cardsImg(s.board)}</div><div class="row"><span class="lbl">shop</span>${cardsImg(s.shop)}</div>`;
+}
+const es = new EventSource("/api/live/events");
+const on = (k, fn) => es.addEventListener(k, e => { const d = JSON.parse(e.data); if (d.names) Object.assign(NAMES, d.names); fn(d); });
+on("status", d => {
+  $("#testBadge").innerHTML = d.log && d.log.includes("test_replay") ? `<span class="testbadge">TEST MODE: replaying an old game</span>` : "";
+  $("#liveDot").classList.toggle("on", !!d.in_game);
+  $("#liveStatus").innerHTML = d.log ? (d.in_game ? `In a game: round ${d.round}` : "Watching Hearthstone, no game running") + ` <span class="muted">· ${esc(d.log)}</span>` : esc(d.message||"No log");
+  if (d.snapshot){ live.turns = d.snapshot.turns||[]; live.combats = {}; (d.snapshot.combats||[]).forEach(c=>live.combats[c.round]=c); liveStats(d.snapshot); renderLive(); }
+});
+on("game_start", d => { live.turns=[]; live.combats={}; $("#liveAdvice").innerHTML=""; $("#liveStrength").innerHTML=""; $("#checkTag").textContent="checks: -"; $("#checkTag").className="tag"; $("#liveDot").classList.add("on");
+  $("#liveStatus").innerHTML = `Game started · patch ${esc(d.patch)} <span class="muted">(${esc(d.patch_name)})</span>`; renderLive(); });
+on("offers", d => showOffers(d));
+on("summary", d => showSummary(d));
+on("round", d => { live.turns.push({...d, actions:[]}); renderLive(); });
+on("turn_start", d => { showStrength(d); });
+on("turn_start", d => { const t = live.turns.at(-1); const {actions, ...rest} = d; if (t && t.round===d.round) Object.assign(t, rest); liveStats(rest); renderLive(); });
+on("action", d => showStrength(d));
+on("action", d => { const t = live.turns.at(-1); if (t) { t.actions = t.actions||[]; t.actions.push(d);} renderLive(); });
+on("choice", d => { $("#liveAdvice").innerHTML = ""; });
+on("choice", d => { if (d.kind==="HERO_PICK") return; const t = live.turns.at(-1); if (t) t.actions.push({type:"CHOICE", ...d}); renderLive(); });
+on("combat", d => { live.combats[d.round]=d; renderLive(); });
+on("checks", d => { const t=$("#checkTag"); t.textContent = `✓ ${d.ok} checks` + (d.failed?` · ✗ ${d.failed} failed`:""); t.className = "tag " + (d.failed?"err":""); });
+on("check_failed", d => showError(`Self-check failed in round ${d.round}: ${d.action} recorded but "${d.expected}" did not happen`, ()=>reportFor("error="+d.error_id)));
+on("game_end", d => { $("#liveDot").classList.remove("on"); $("#liveStatus").innerHTML = `Game over: ${placeTag(d.placement)} ${nm(d.hero)} · saved`; });
+on("parse_error", d => showError(`Parse error at log line ${d.line_no}: ${d.error}`, async()=>{ const h = await api("/api/health"); return reportFor("error="+h.errors[0].id); }));
+on("error", d => showError(`Live watcher error: ${d.error}`, ()=>reportFor("error="+d.id)));
+es.onerror = () => { $("#liveStatus").textContent = "Disconnected from bg-coach (is it still running?)"; $("#liveDot").classList.remove("on"); };
+</script>
+</body>
+</html>
