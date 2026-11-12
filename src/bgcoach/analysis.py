@@ -415,10 +415,12 @@ def coach_report(games: list[dict], recent: int = 20) -> dict:
              "fight": "Fights lost with a weak board, or to a highrolling opponent",
              "hero": "Hero choice", "level": "Leveling while behind and low on HP",
              "position": "Minion order: another order of the same minions won clearly more often (simulated)"}
+    from .playbook import RULES
+    kinds.update({f"rule:{rid}": f"Pro playbook: {title.lower()}" for rid, (title, _, _) in RULES.items()})
     n_recent = len(rows[-recent:]) or 1
     summary = []
     for k, label in kinds.items():
-        ds = [d for d in decisions if d["kind"] == k]
+        ds = [d for d in decisions if (f"rule:{d.get('rule')}" if d["kind"] == "rule" else d["kind"]) == k]
         if ds:
             summary.append({"kind": k, "label": label, "count": len(ds), "per_game": round(len(ds) / n_recent, 2),
                             "total": round(sum(weight(d) for d in ds), 2)})

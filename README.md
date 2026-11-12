@@ -34,6 +34,9 @@ coach section that thinks about the lobby, not just your cards:
 - **Minion order**: the same minions in another order, simulated (rounds 1–10).
 - **Hero choice**, explained: top-4 rate, early vs late strength, how this lobby's tribes suit each
   hero, and the hero power. Plus **risky level-ups** at low health.
+- **Pro playbook:** fundamentals top players teach (don't roll early, tier 3 by turn 5, don't
+  level below the 15-HP damage cap, level before playing a triple reward, use your Dark Gifts…),
+  flagged when you did otherwise, each with its source. The full list is in [docs/PLAYBOOK.md](docs/PLAYBOOK.md).
 - **Card numbers** (buys and picks against the averages at your MMR) as background context only,
   because averages can't see your situation.
 

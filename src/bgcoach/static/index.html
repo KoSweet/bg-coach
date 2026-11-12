@@ -414,6 +414,11 @@ function momentParts(d){
     const risky = (d.risky||[]).length ? ` <span class="tag warn">risky</span>` : "";
     return ["Counter", `${esc(d.what)}${d.buy_kw&&d.buy_kw.length?` <span class="muted">(${esc(d.buy_kw.join(", "))})</span>`:""} ${icon(d.buy)}: win <b>${Math.round(d.base.win)}%</b> → ${num(Math.round(d.new.win)+"%",true)}, loss ${Math.round(d.base.loss)}% → ${Math.round(d.new.loss)}%${risky}`, `+${Math.round(d.gain)}`, det];
   }
+  if (d.kind==="rule"){
+    det.push(`📘 Why pros do it differently: ${esc(d.why)}`);
+    det.push(`Source: ${d.url ? `<a href="${esc(d.url)}" target="_blank" rel="noopener">${esc(d.source)}</a>` : esc(d.source)}`);
+    return ["Playbook", `<b>${esc(d.title)}</b> · ${esc(d.what)}`, "", det];
+  }
   if (d.kind==="buy" && d.situational) det.unshift(`🤔 ${esc(d.situational)}`);
   if (d.kind==="position"){
     return ["Order", `same minions, other order: <b>${Math.round(d.base_win)}%</b> → ${num(Math.round(d.best_win)+"%",true)} win

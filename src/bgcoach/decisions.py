@@ -299,7 +299,8 @@ def card_notes(g: dict, bracket: int) -> list[dict]:
 def all_decisions(g: dict, bracket: int, strength: list[dict], opponents: list[dict] | None = None) -> list[dict]:
     """Moments to review: fights (with the matchup), lines that would have changed a lost fight,
     minion order, risky level-ups. Card-average comparisons are separate (card_notes): context only."""
-    d = fight_decisions(g, strength, opponents) + level_decisions(g, strength)
+    from .playbook import check as playbook_check
+    d = fight_decisions(g, strength, opponents) + level_decisions(g, strength) + playbook_check(g)
     d = with_simulation(g, d)
     countered = {x["round"] for x in d if x["kind"] == "counter"}
     for x in d:
