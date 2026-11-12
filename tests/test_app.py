@@ -124,3 +124,15 @@ def test_unknown_game_is_404(server):
     with pytest.raises(urllib.error.HTTPError) as e:
         _get(server, "/api/games/nope.json")
     assert e.value.code == 404
+
+
+def test_page_is_read_once_per_process(tmp_path, monkeypatch):
+    # an app started before an update must keep serving the page that matches its own code
+    from bgcoach import web
+    f = tmp_path / "index.html"
+    f.write_text("old page", encoding="utf-8")
+    monkeypatch.setattr(web, "STATIC", tmp_path)
+    monkeypatch.setattr(web, "_PAGE", {})
+    assert web.page() == b"old page"
+    f.write_text("new page", encoding="utf-8")
+    assert web.page() == b"old page"

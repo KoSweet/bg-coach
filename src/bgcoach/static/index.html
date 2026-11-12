@@ -600,18 +600,18 @@ async function loadImprove(){
   const r = await api("/api/improve"); Object.assign(NAMES, r.names||{});
   const top = r.decision_summary[0], rest = r.decision_summary.slice(1);
   const trendWord = s => s.before==null || s.last5==null ? "" : s.last5 < s.before ? `<span class="good">improving</span>` : s.last5 > s.before ? `<span class="bad">getting worse</span>` : `<span class="muted">no change</span>`;
-  const series = s => { const mx = Math.max(1, ...s.series.map(x=>x.count));
-    return `<div class="bars" style="height:70px">${s.series.map(x=>`<div class="bar click" onclick="openGame('${esc(x.file)}')" title="${esc((x.start||"").slice(0,16))}: ${x.count}× · place ${x.placement}">
+  const series = s => { const mx = Math.max(1, ...(s.series||[]).map(x=>x.count));
+    return `<div class="bars" style="height:70px">${(s.series||[]).map(x=>`<div class="bar click" onclick="openGame('${esc(x.file)}')" title="${esc((x.start||"").slice(0,16))}: ${x.count}× · place ${x.placement}">
       <div class="b" style="height:${x.count?Math.max(6,56*x.count/mx):3}px;background:${x.count?"var(--bad)":"var(--line)"}"></div><span class="r">${x.placement}</span></div>`).join("")}</div>`; };
   $("#improveBody").innerHTML = `
     ${top?`<div class="card focus"><h3>Your focus <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· last ${r.recent_games>1?r.recent_games+" games":"game"}${r.mmr?` · MMR ${r.mmr} (compared with the top ${r.bracket}%)`:""}</span></h3>
       <div class="big" style="font-size:19px">${esc(top.habit || top.label)}</div>
-      <div class="muted" style="margin-bottom:6px">${esc(top.label)} · ${top.count}× in ${r.recent_games} game${r.recent_games>1?"s":""}${top.series.length>=6?` · last 5 games ${top.last5} per game vs ${top.before} before: ${trendWord(top)}`:""}</div>
-      ${top.series.length>=6 ? series(top) + `<div class="muted" style="font-size:11.5px">Each bar is one game, oldest left; the height is how often it happened; the number is your placement. Click to open the game.</div>`
+      <div class="muted" style="margin-bottom:6px">${esc(top.label)} · ${top.count}× in ${r.recent_games} game${r.recent_games>1?"s":""}${(top.series||[]).length>=6?` · last 5 games ${top.last5} per game vs ${top.before} before: ${trendWord(top)}`:""}</div>
+      ${(top.series||[]).length>=6 ? series(top) + `<div class="muted" style="font-size:11.5px">Each bar is one game, oldest left; the height is how often it happened; the number is your placement. Click to open the game.</div>`
         : `<div class="muted" style="font-size:12px">After 6 games you'll see here whether this is getting better.</div>`}
       ${top.example?`<div style="margin-top:8px"><div class="muted" style="font-size:12px">BIGGEST EXAMPLE</div>${momentHtml(top.example, true)}</div>`:""}</div>`
       : `<div class="card focus"><h3>Your focus</h3><div class="big">Nothing stands out in your recent games.</div></div>`}
-    ${rest.length?`<div class="card"><h3>Other habits</h3>${rest.map(s=>`<div class="hab"><b>${s.count}×</b><span>${esc(s.label)}<div class="muted" style="font-size:12px">${esc(s.habit||"")}</div></span><span class="muted" style="font-size:12px;text-align:right">${s.per_game}/game<br>${s.series.length>=6?trendWord(s):""}</span></div>`).join("")}</div>`:""}
+    ${rest.length?`<div class="card"><h3>Other habits</h3>${rest.map(s=>`<div class="hab"><b>${s.count}×</b><span>${esc(s.label)}<div class="muted" style="font-size:12px">${esc(s.habit||"")}</div></span><span class="muted" style="font-size:12px;text-align:right">${s.per_game}/game<br>${(s.series||[]).length>=6?trendWord(s):""}</span></div>`).join("")}</div>`:""}
     <div class="card"><h3>Decisions to learn from <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· concrete lines first, then habits, then costly fights</span></h3>
       ${r.decisions.slice(0, 15).map(d=>momentHtml(d,true)).join("") || '<span class="muted">Nothing stands out in your recent games.</span>'}
       <div class="muted" style="font-size:12px;margin-top:6px">Counters and minion orders are simulated on the real fight (pts = win % + half the ties), only for fights the simulator reproduces, and only with minions that were in your shop when the turn ended. "Highroller" = their board was at least 1.5× the average for their hero. Hero numbers are average placements at your MMR from ${(r.meta_games||0).toLocaleString()} games, shown only when the difference is beyond chance.</div>

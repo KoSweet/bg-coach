@@ -21,6 +21,15 @@ from .live import LiveWatcher
 STATIC = Path(__file__).parent / "static"
 PORT = 8765
 STALE_ROUNDS = 3  # live odds only against a board you saw at most this many rounds ago
+_PAGE: dict = {}
+
+
+def page() -> bytes:
+    """The app page, read once per process: an app started before an update keeps serving the page
+    that matches its own code (new page + old server = missing fields = crash)."""
+    if "body" not in _PAGE:
+        _PAGE["body"] = (STATIC / "index.html").read_bytes()
+    return _PAGE["body"]
 
 
 # ------------------------------------------------------------------ live broadcast
@@ -457,7 +466,7 @@ class Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         path, qs = u.path, parse_qs(u.query)
         if path in ("/", "/index.html"):
-            body = (STATIC / "index.html").read_bytes()
+            body = page()
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
