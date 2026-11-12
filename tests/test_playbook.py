@@ -73,3 +73,47 @@ def test_dark_gifts_only_from_season_14():
 def test_every_rule_names_its_source():
     for rid, (title, src, why) in playbook.RULES.items():
         assert src in playbook.SOURCES and title and why, rid
+
+
+def m(atk, hp, *kw, cid="X"):
+    return {"card_id": cid, "atk": atk, "hp": hp, "kw": list(kw)}
+
+
+def fight(rnd, mine, theirs, result="LOSS"):
+    return {"round": rnd, "result": result, "my_board": mine, "opp_board": theirs, "damage_taken": 5}
+
+
+def test_early_order_weak_minion_leading():
+    lost = fight(4, [m(1, 1), m(8, 8), m(2, 2)], [m(5, 5)])
+    assert "early_order" in rules(game([turn(4)], [lost]))
+    shield = fight(4, [m(1, 1, "DIVINE_SHIELD"), m(8, 8)], [m(5, 5)])  # a shield up front is fine
+    won = fight(4, [m(1, 1), m(8, 8)], [m(5, 5)], result="WIN")
+    late = fight(9, [m(1, 1), m(8, 8)], [m(5, 5)])                    # late game: bumpers lead on purpose
+    assert "early_order" not in rules(game([turn(4)], [shield]))
+    assert "early_order" not in rules(game([turn(4)], [won]))
+    assert "early_order" not in rules(game([turn(9)], [late]))
+
+
+def test_taunt_next_to_cleave():
+    middle = fight(10, [m(5, 5), m(9, 9, "TAUNT"), m(5, 5)], [m(9, 9, "CLEAVE")])
+    edge = fight(10, [m(5, 5), m(5, 5), m(9, 9, "TAUNT")], [m(9, 9, "CLEAVE")])
+    no_cleave = fight(10, [m(5, 5), m(9, 9, "TAUNT"), m(5, 5)], [m(9, 9)])
+    assert "taunt_cleave" in rules(game([turn(10)], [middle]))
+    assert "taunt_cleave" not in rules(game([turn(10)], [edge]))
+    assert "taunt_cleave" not in rules(game([turn(10)], [no_cleave]))
+
+
+def test_biggest_minion_into_venom():
+    mine = [m(50, 50), m(5, 5), m(5, 5), m(5, 5)]
+    venom = [m(1, 1, "VENOMOUS"), m(1, 1, "POISONOUS"), m(3, 3)]
+    assert "venom_biggest" in rules(game([turn(10)], [fight(10, mine, venom)]))
+    assert "venom_biggest" not in rules(game([turn(10)], [fight(10, mine[1:] + mine[:1], venom)]))
+
+
+def test_roll_into_a_freeze_only_when_you_could_buy():
+    could_buy = turn(6, [{"type": "REFRESH", "gold": 3}, {"type": "FREEZE", "gold": 2}], gold_end=2)
+    spare_gold = turn(6, [{"type": "REFRESH", "gold": 1}, {"type": "FREEZE", "gold": 0}], gold_end=0)
+    bought = turn(6, [{"type": "REFRESH", "gold": 3}, {"type": "BUY", "gold": 2}], gold_end=0)
+    assert "roll_short" in rules(game([could_buy]))
+    assert "roll_short" not in rules(game([spare_gold]))   # last gold would be lost anyway
+    assert "roll_short" not in rules(game([bought]))

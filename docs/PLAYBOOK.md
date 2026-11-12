@@ -5,8 +5,12 @@ What strong players say they do, and why, in our own words, with links to the so
 "Playbook" moments when the log shows you did otherwise. The rest need judgment; the coach supports
 them with numbers (counter lines, the lobby view, card numbers) instead of a rule.
 
-Sources: JeefHS, [10 PRO Tips to EASILY Hit 10k](https://www.youtube.com/watch?v=5qtIFm2-zK4) and
-[The ULTIMATE LEVELING GUIDE (2025 Updated)](https://www.youtube.com/watch?v=tjSsXWdgTvE) (rank 1 NA);
+Sources: JeefHS, [10 PRO Tips to EASILY Hit 10k](https://www.youtube.com/watch?v=5qtIFm2-zK4),
+[The ULTIMATE LEVELING GUIDE (2025 Updated)](https://www.youtube.com/watch?v=tjSsXWdgTvE),
+[Positioning Explained by a PRO](https://www.youtube.com/watch?v=AsnJkEs9880),
+[Rank 1 Player Explains EVERY Play](https://www.youtube.com/watch?v=iUKdMA7jO4s) and
+[You MUST ABUSE This Dark Gift!](https://www.youtube.com/watch?v=Z-16suf9KZY) (rank 1 NA); dogdog,
+[The Best Time To Use Dark Gifts](https://www.youtube.com/watch?v=XlKYpjAqT-Q);
 [Pocky's guide](https://hearthstone-decks.net/?p=50353) (11.5k MMR, 2020: fundamentals still apply);
 Blizzard's [Developer Insight: Dark Gifts](https://us.forums.blizzard.com/en/hearthstone/t/battlegrounds-developer-insight-dark-gifts/163606)
 and the [Dark Gift page](https://hearthstone.wiki.gg/wiki/Battlegrounds/Dark_Gift) of the Hearthstone wiki.
@@ -56,7 +60,35 @@ and the [Dark Gift page](https://hearthstone.wiki.gg/wiki/Battlegrounds/Dark_Gif
 - Before rolling, name the units you'd be happy to find. If that list is short, level instead.
 - At 7 gold with nothing buyable on tier 3, rolling for two good units rarely works: level. If one
   unit is buyable, buy it.
+- **checked** If you can afford a useful buy, don't roll into something you'll only be able to
+  freeze. Rolling your last 1–2 gold is fine: unspent gold is lost.
 - **checked** Freeze only what you'll actually buy next turn: a freeze costs you a fresh shop.
+
+## Positioning
+
+From [Positioning Explained by a PRO](https://www.youtube.com/watch?v=AsnJkEs9880) and
+[Rank 1 Player Explains EVERY Play](https://www.youtube.com/watch?v=iUKdMA7jO4s) (JeefHS):
+
+- **checked** Turns 1–7: highest attack first, lowest last. The early game is about value trades
+  (a 4/5 kills a 3/4 and survives). Exceptions: minions that summon (put them early to free space for
+  the summons) and divine shields.
+- Adapt to the taunts players show early: lead with something small into a big divine-shield taunt.
+- Late game, **default positioning** when you know nothing about the opponent: a *bumper* (your
+  worst-statted unit, e.g. a scaling engine you must keep) first to pop shields and absorb triggers,
+  your biggest unit second.
+- **checked** One taunt goes in position 7, so a cleave can only hit one minion. With two big taunts,
+  use positions 5 and 7; put a minion you don't mind losing next to a taunt ("cleave protect").
+- **checked** Against venomous boards (often Murlocs), put your biggest unit last and spend their
+  venoms on tokens and mid-size units. Against Beasts and Undead, don't bump: you need every chance
+  to reach their backline.
+- With information (you've seen their board): value-trade their taunt with your biggest unit and
+  save your venom/tech for a higher-impact target.
+- Simulate the fight in your head, both with you attacking first and them attacking first, and try
+  another order if you don't like the result. (The coach does this for you after the game with the
+  simulator: "Order" moments.)
+- Late game, give every unit a role: stats, a taunt answer, a venom soak, a protected backline
+  scaler. Against boards that trade one-for-one (venom), raw stats are futile: you need *utility*,
+  units that trade more than one-for-one (divine shield, cleave).
 
 ## Dark Gifts (Season 14)
 
@@ -67,6 +99,9 @@ and the [Dark Gift page](https://hearthstone.wiki.gg/wiki/Battlegrounds/Dark_Gif
   Persisting Horror, Titanic Strength 11+). Waiting makes them stronger but costs tempo and HP:
   several top players now press it as soon as it's available.
 - Judge the minion as much as the gift: a great gift on a minion that doesn't fit your board is weak.
+- Strong-player examples from recent games (JeefHS, dogdog): Harpy's Talons (divine shield +
+  windfury) on a strong minion is excellent; Admiration (start of combat: gain the attack of the
+  minion to its left) makes positioning matter, so chain Admiration minions behind your biggest attacker.
 - **checked** Don't end the game with gifts unused.
 
 ## End game

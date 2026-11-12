@@ -300,7 +300,8 @@ def all_decisions(g: dict, bracket: int, strength: list[dict], opponents: list[d
     """Moments to review: fights (with the matchup), lines that would have changed a lost fight,
     minion order, risky level-ups. Card-average comparisons are separate (card_notes): context only."""
     from .playbook import check as playbook_check
-    d = fight_decisions(g, strength, opponents) + level_decisions(g, strength) + playbook_check(g)
+    db = V.card_db(g.get("build") or V.current_bg_meta_build())
+    d = fight_decisions(g, strength, opponents) + level_decisions(g, strength) + playbook_check(g, db)
     d = with_simulation(g, d)
     countered = {x["round"] for x in d if x["kind"] == "counter"}
     for x in d:

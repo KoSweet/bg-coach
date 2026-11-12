@@ -15,6 +15,8 @@ SOURCES = {
     "jeef_tips": ("JeefHS, 10 PRO Tips to EASILY Hit 10k (2025)", "https://www.youtube.com/watch?v=5qtIFm2-zK4"),
     "jeef_level": ("JeefHS, The ULTIMATE LEVELING GUIDE (2025 Updated)", "https://www.youtube.com/watch?v=tjSsXWdgTvE"),
     "pocky": ("Pocky (11.5k MMR), Battlegrounds guide", "https://hearthstone-decks.net/?p=50353"),
+    "jeef_pos": ("JeefHS, Positioning Explained by a PRO", "https://www.youtube.com/watch?v=AsnJkEs9880"),
+    "jeef_every": ("JeefHS, Rank 1 Battlegrounds Player Explains EVERY Play", "https://www.youtube.com/watch?v=iUKdMA7jO4s"),
     "dark_gifts": ("Blizzard, Developer Insight: Dark Gifts",
                    "https://us.forums.blizzard.com/en/hearthstone/t/battlegrounds-developer-insight-dark-gifts/163606"),
     "game_rules": ("Battlegrounds rules: a triple reward discovers from one tier above your tavern", None),
@@ -33,6 +35,15 @@ RULES = {
                             "A triple reward discovers from one tier above your tavern. Level first, then play it."),
     "freeze_unused": ("Froze the shop, bought none of it", "pocky",
                       "Freezing costs you a fresh shop: freeze only what you'll pay for next turn."),
+    "roll_short": ("Rolled without gold to buy", "jeef_every",
+                   "If you can afford a useful buy, don't roll into something you'll only be able to freeze. "
+                   "(Rolling your last 1–2 gold is fine: it would be lost anyway.)"),
+    "early_order": ("Weak minion leading early", "jeef_pos",
+                    "Turns 1–7: highest attack first, lowest last, to win value trades (except summoners and shields)."),
+    "taunt_cleave": ("Taunt in reach of a cleave", "jeef_pos",
+                     "With one taunt, put it last (position 7): a cleave then hits one minion, not two."),
+    "venom_biggest": ("Biggest minion into venom", "jeef_pos",
+                      "Against venomous boards (often Murlocs), put your biggest minion last and spend venoms on small ones."),
     "dark_gifts_unused": ("Dark Gifts left unused", "dark_gifts",
                           "3 gold for a minion from a higher tier with a gift, up to 3 times a game (once per turn). "
                           "Unused ones are value you never got."),
@@ -59,8 +70,76 @@ def _paid_refreshes(t: dict) -> int:
     return n
 
 
-def check(g: dict) -> list[dict]:
-    """Every playbook rule this game broke, with the round and what happened."""
+def _atk(m: dict) -> int:
+    return m.get("atk") or 0
+
+
+def _size(m: dict) -> int:
+    return (m.get("atk") or 0) + max(0, m.get("hp") or 0)
+
+
+def _summons_or_shield(m: dict, db) -> bool:
+    """Minions that are fine up front: divine shields, and deathrattle/avenge summoners (they free space)."""
+    if "DIVINE_SHIELD" in (m.get("kw") or []):
+        return True
+    c = db.get(m.get("card_id")) if db else {}
+    mech = set(c.get("mechanics") or [])
+    return bool({"DEATHRATTLE", "AVENGE"} & mech) or "summon" in (c.get("text") or "").lower()
+
+
+def _positioning(g: dict, combats: dict, db) -> list[dict]:
+    """Positioning rules, checked on fights you lost (where it could have mattered)."""
+    out = []
+    for r, c in sorted(combats.items()):
+        mine, theirs = c.get("my_board") or [], c.get("opp_board") or []
+        if c.get("result") != "LOSS" or len(mine) < 2:
+            continue
+        # early: a low-attack minion leads while a much bigger hitter waits
+        if r <= 7 and not _summons_or_shield(mine[0], db):
+            best = max(mine[1:], key=_atk)
+            if _atk(best) >= 2 * max(1, _atk(mine[0])) and _atk(best) - _atk(mine[0]) >= 3:
+                out.append(_rule("early_order", r, f"Led with a {_atk(mine[0])}-attack minion while a "
+                                                   f"{_atk(best)}-attack one waited in position "
+                                                   f"{mine.index(best) + 1}.", weight=0.1, card=mine[0].get("card_id")))
+        cleave = any("CLEAVE" in (m.get("kw") or []) for m in theirs)
+        taunts = [i for i, m in enumerate(mine) if "TAUNT" in (m.get("kw") or [])]
+        if cleave and len(taunts) == 1 and 0 < taunts[0] < len(mine) - 1:
+            out.append(_rule("taunt_cleave", r, f"Their board had cleave; your only taunt stood in position "
+                                                f"{taunts[0] + 1} of {len(mine)}, with minions on both sides.",
+                             weight=0.15))
+        venoms = sum(1 for m in theirs if {"VENOMOUS", "POISONOUS"} & set(m.get("kw") or []))
+        if venoms >= 2 and len(mine) >= 4:
+            big = max(range(len(mine)), key=lambda i: _size(mine[i]))
+            if big <= 1 and "DIVINE_SHIELD" not in (mine[big].get("kw") or []):
+                out.append(_rule("venom_biggest", r, f"They had {venoms} venomous/poisonous minions; your biggest "
+                                                     f"minion ({_size(mine[big])} stats) stood in position {big + 1}.",
+                                 weight=0.2, card=mine[big].get("card_id")))
+    return out
+
+
+def _short_rolls(turns: dict) -> list[dict]:
+    """A paid roll that left less than a minion's price, then nothing bought and the shop frozen:
+    you rolled into something you couldn't afford (rolling for a cheap spell is fine: you'd buy it)."""
+    out = []
+    for r, t in sorted(turns.items()):
+        acts = t.get("actions") or []
+        for i, a in enumerate(acts):
+            if a["type"] != "REFRESH" or a.get("gold") is None or r <= 2:
+                continue
+            after = next((x.get("gold") for x in acts[i + 1:] if x.get("gold") is not None), t.get("gold_end"))
+            if after is None or after >= a["gold"] or after >= 3 or a["gold"] < 3:
+                continue  # free roll, still able to buy, or spare gold that would be lost anyway
+            rest = acts[i + 1:]
+            if not any(x["type"] in ("BUY", "REFRESH") for x in rest) and any(x["type"] == "FREEZE" for x in rest):
+                out.append(_rule("roll_short", r, f"Rolled with {a['gold']} gold (enough to buy), leaving {after}, then "
+                                                  f"froze what came up instead of buying.", weight=0.05))
+                break
+    return out
+
+
+def check(g: dict, db=None) -> list[dict]:
+    """Every playbook rule this game broke, with the round and what happened.
+    `db` (card database) refines positioning checks; without it they still run on keywords."""
     turns = {t["round"]: t for t in g.get("turns") or []}
     combats = {c["round"]: c for c in g.get("combats") or []}
     out = []
@@ -112,6 +191,9 @@ def check(g: dict) -> list[dict]:
             if frozen and not (frozen & bought):
                 out.append(_rule("freeze_unused", r, f"Froze {len(frozen)} cards on round {r}, then bought none of "
                                                      f"them on round {r + 1}.", weight=0.05))
+
+    out += _positioning(g, combats, db)
+    out += _short_rolls(turns)
 
     gifts = [r for r, t in turns.items() for a in t.get("actions") or [] if a["type"] == "DARK_GIFT"]
     last = max(turns) if turns else 0
