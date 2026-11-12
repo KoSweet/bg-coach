@@ -9,12 +9,13 @@ a fight you lost (a diagnosis, not an action) comes last.
 """
 from __future__ import annotations
 
-PRIORITY = {"counter": 0, "position": 1, "level": 2, "hero": 3, "rule": 4, "fight": 5}
+PRIORITY = {"counter": 0, "turning": 1, "position": 2, "level": 3, "hero": 4, "rule": 5, "fight": 6}
 
 HABITS = {
-    "counter:skip_level": "Before you level, look at the shop once more: is there a minion that wins your next fight?",
-    "counter:instead": "Before each buy, ask which minion in this shop helps your next fight most, not only which is best.",
-    "counter:spare": "Don't end a turn with gold that could have bought a minion for the next fight.",
+    "counter:skip_level": "Before levelling, ask: if I lose this fight, do I drop below 15 HP? If yes, buy the minion "
+                          "that wins it and level next turn.",
+    "counter:instead": "When a loss would take you below 15 HP, buy for the next fight first; the long-term card can wait.",
+    "counter:spare": "When a loss would take you below 15 HP, spend every gold on the next fight.",
     "position": "Give positioning five seconds before the turn ends: big attackers first early, a lone taunt last, "
                 "your biggest minion away from venom.",
     "level": "Before levelling, ask: will I drop below 15 HP if I lose this fight? If yes, stabilize first.",
@@ -28,8 +29,8 @@ HABITS = {
 def size(d: dict) -> float:
     k = d["kind"]
     if k in ("counter", "position"):
-        return d.get("gain") or 0
-    if k in ("fight", "level"):
+        return d.get("saved_hp") or 0
+    if k in ("fight", "level", "turning"):
         return d.get("damage") or 0
     return (d.get("diff") or 0) * 100
 
@@ -38,8 +39,8 @@ def impact(d: dict) -> str:
     """What it cost, in its own unit (no +/- signs: everything here is a cost)."""
     k = d["kind"]
     if k in ("counter", "position"):
-        return f"{size(d):.0f} pts"  # win % + half the ties
-    if k in ("fight", "level"):
+        return f"~{size(d):.0f} HP saved"  # expected: damage taken × how much less likely the loss was
+    if k in ("fight", "level", "turning"):
         return f"{d.get('damage') or 0} HP"
     if k in ("hero", "buy", "pick"):
         return f"{d.get('diff') or 0:.2f} places"
@@ -48,6 +49,8 @@ def impact(d: dict) -> str:
 
 def habit(d: dict) -> str | None:
     k = d["kind"]
+    if k == "turning":
+        return d.get("habit")
     if k == "counter":
         return HABITS.get(f"counter:{d.get('line_kind')}")
     if k == "rule":
@@ -67,10 +70,13 @@ def headline(d: dict, name) -> str:
     """One plain sentence (no markup), for the after-game card and the overlay."""
     k, r = d["kind"], d.get("round")
     if k == "counter":
-        return f"Round {r}: {d['what']}: that fight goes from {odds(d['base'])} to {odds(d['new'])} (simulated)."
+        return (f"Round {r}: {d['what']}: that fight goes from {odds(d['base'])} to {odds(d['new'])} (simulated), "
+                f"about {d.get('saved_hp', 0):.0f} HP saved (you dropped to {d.get('hp_after', '?')}).")
     if k == "position":
-        return (f"Round {r}: the same minions in another order win {d['best_win']:.0f}% instead of "
-                f"{d['base_win']:.0f}% (simulated).")
+        return (f"Round {r}: you had seen this board on round {d.get('seen_round', '?')}; the same minions in another "
+                f"order win {d['best_win']:.0f}% instead of {d['base_win']:.0f}%, about {d.get('saved_hp', 0):.0f} HP saved.")
+    if k == "turning":
+        return d.get("what", "")
     if k == "level":
         return f"Round {r}: {d.get('calc', '')}"
     if k == "hero":

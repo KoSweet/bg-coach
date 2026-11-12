@@ -25,7 +25,11 @@ def test_simulation_notes(monkeypatch, tmp_path):
     monkeypatch.setattr(whatif, "load", lambda f: cache)
     ds = [{"kind": "buy", "round": 5, "you": "A", "better": "B"}, {"kind": "buy", "round": 6, "you": "C", "better": "D"},
           {"kind": "fight", "round": 5}, {"kind": "fight", "round": 6}]
-    out = with_simulation({"file": "x.json"}, ds)
+    g = {"file": "x.json", "combats": [{"round": 4, "result": "LOSS", "damage_taken": 20, "hp_after": 10}]}
+    seen = [{"round": 4, "seen_before": {"round": 2, "stats": 30}}]
+    out = with_simulation(g, ds, seen)
+    unseen = with_simulation(g, [dict(x) for x in ds[:0]], [])  # never seen that board: hindsight, not a lesson
+    assert not [d for d in unseen if d["kind"] == "position"]
     assert "no difference" in out[0]["sim_note"]
     assert "+25 points" in out[1]["sim_note"]
     assert out[2]["sim"]["loss"] == 70

@@ -424,8 +424,13 @@ class Overlay:
             self._show_offers(d)
         elif kind == "summary":  # between games: the one thing to take into the next game
             les = d.get("lesson")
-            text = (f"#{d.get('placement')} · THE ONE THING\n{les['headline']}\nNext game: {les.get('habit') or ''}"
-                    if les else f"#{d.get('placement')} · nothing big to fix this game")
+            if d.get("good_game"):  # a top-2 game without a turning point: no "mistake" headline
+                text = f"#{d.get('placement')} · Good game: no turning point to fix." + (
+                    f"\nSmall thing: {les['headline']}" if les else "")
+            elif les:
+                text = f"#{d.get('placement')} · THE ONE THING\n{les['headline']}\nNext game: {les.get('habit') or ''}"
+            else:
+                text = f"#{d.get('placement')} · nothing big to fix this game"
             self.lesson.config(text=text.strip())
             if not self.lesson.winfo_ismapped():
                 self.lesson.pack(fill="x", pady=(4, 0), before=self.feed)

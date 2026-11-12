@@ -35,12 +35,14 @@ def test_decisions_are_real_either_or_choices():
         a = analysis.game_analysis(g, 50)
     except Exception as e:
         pytest.skip(f"meta unavailable: {e}")
-    ds = decisions.all_decisions(g, 50, a["strength"])
-    buys = [d for d in ds if d["kind"] == "buy"]
+    buys = decisions.buy_decisions(g, 50)
     for d in buys:
         assert d["diff"] >= decisions.FLAG_DIFF and d["better"] != d["you"]
         assert d["better_val"] < d["you_val"]
         assert d["gold"] < 6  # couldn't afford both a 3g card and the alternative
-    fights = [d for d in ds if d["kind"] == "fight"]
-    # 106 stats vs ~212 same-hero average, lost 15 (the average moves with the daily meta snapshot)
-    assert any(d["round"] == 8 and 0.4 <= d["ratio"] <= 0.6 and d["damage"] == 15 for d in fights)
+    ds = decisions.all_decisions(g, 50, a["strength"], a["lobby"])
+    # round 8: 29 → 14 HP. The level-up (round 6) came with the board at 100%: fine. After it, 5 rolls and
+    # 4 buys still left the board at ~half the same-hero average: the lesson is the quality of the buys.
+    tp = [d for d in ds if d["kind"] == "turning"]
+    assert len(tp) == 1 and tp[0]["round"] == 8 and tp[0]["cause"] == "spent" and min(tp[0]["ratios"]) < 0.6
+    assert not [d for d in ds if d["kind"] == "fight" and d["round"] == 8]  # not said twice

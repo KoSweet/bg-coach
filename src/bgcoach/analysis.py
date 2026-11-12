@@ -417,9 +417,10 @@ def coach_report(games: list[dict], recent: int = 20) -> dict:
     notes.sort(key=lambda d: -(d.get("diff") or 0))
 
     # which kind of decision shows up most in your recent games
-    kinds = {"counter": "A different buy or skipping a level would have won a fight you lost (simulated, your shop that turn)",
-             "fight": "Fights lost with a weak board, or to a highrolling opponent",
-             "hero": "Hero choice", "level": "Leveling while behind and low on HP",
+    kinds = {"counter": "A buy from your shop would have saved real HP in a fight you lost (simulated)",
+             "turning": "The game turned below 15 HP: your board was behind while you levelled or rolled",
+             "fight": "Fights lost to a real highroller (2× the average for their hero)",
+             "hero": "Hero choice",
              "position": "Minion order: another order of the same minions won clearly more often (simulated)"}
     from .playbook import RULES
     kinds.update({f"rule:{rid}": f"Pro playbook: {title.lower()}" for rid, (title, _, _) in RULES.items()})

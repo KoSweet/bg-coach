@@ -195,7 +195,67 @@ def level_decisions(g: dict, strength: list[dict]) -> list[dict]:
     return out
 
 
-def with_simulation(g: dict, ds: list[dict]) -> list[dict]:
+LINE_HP = 15  # the damage cap: above it you survive any single loss before top 4
+
+
+def turning_point(g: dict, strength: list[dict], opponents: list[dict] | None = None) -> dict | None:
+    """Where the game turned, the way a pro reviews it: the fight that took you below 15 HP, what your
+    board looked like on the turns before, and what you spent those turns on. None when you never
+    crossed the line, or when it was close fights with a normal board (nothing to change)."""
+    combats = sorted(g.get("combats") or [], key=lambda c: c["round"])
+    hp = lambda c, k: (c.get(f"hp_{k}") or 0) + (c.get(f"armor_{k}") or 0)
+    cross = next((c for c in combats if c.get("result") == "LOSS" and hp(c, "before") >= LINE_HP > hp(c, "after")), None)
+    if cross is None:
+        return None
+    r = cross["round"]
+    turns = {t["round"]: t for t in g.get("turns") or []}
+    st = {s["round"]: s.get("ratio") for s in strength or []}
+    opp = {f["round"]: f for f in opponents or []}.get(r) or {}
+    window = [x for x in range(max(1, r - 2), r + 1) if x in turns]
+    ratios = [st.get(x) for x in window if st.get(x) is not None]
+    acts = [a for x in window for a in turns[x].get("actions") or []]
+    levels = [a.get("to_tier") for a in acts if a["type"] == "LEVEL"]
+    rolls = sum(1 for a in acts if a["type"] == "REFRESH")
+    buys = sum(1 for a in acts if a["type"] == "BUY")
+    # behind = the board was under the same-hero average in that fight and clearly behind on some turn
+    behind = bool(ratios) and min(ratios) < 0.85 and (st.get(r) if st.get(r) is not None else 1) < 0.9
+    # levelled on a turn when the board was already behind (judged by the fight before that turn)
+    levelled_behind = any(any(a["type"] == "LEVEL" for a in turns[x].get("actions") or [])
+                          and (st.get(x - 1) if st.get(x - 1) is not None else st.get(x) or 1) < 0.85 for x in window)
+    if opp.get("highroll") and (st.get(r) or 0) >= 0.9:
+        cause, habit = "highroll", ("Against a highroller there's often nothing to fix that turn; protect your HP "
+                                    "earlier when the next-opponent card shows one.")
+    elif behind and levelled_behind:
+        cause, habit = "levelled", ("Before levelling, ask: will I drop below 15 HP if I lose? If yes, spend the "
+                                    "turn on stats (stabilize) and level when you're even again.")
+    elif behind and rolls + buys >= 8:
+        cause, habit = "spent", ("You spent the gold but the board still fell behind: go for big upgrades (a key "
+                                 "unit, stats concentrated on one or two minions) instead of many small ones.")
+    elif behind and levels:
+        cause, habit = "levelled", ("Before levelling, ask: will I drop below 15 HP if I lose? If yes, spend the "
+                                    "turn on stats (stabilize) and level when you're even again.")
+    elif behind:
+        cause, habit = "behind", ("When your board drops below about 80% of the average for your hero, buy fighting "
+                                  "power (pairs, big stat units, tavern spells) before anything else.")
+    else:
+        return None  # normal board, normal opponent: close fights, not a decision
+    trend = " → ".join(f"{v:.0%}" for v in ratios)
+    did = ", ".join(x for x in (f"levelled {len(levels)}× (to tier {', '.join(map(str, levels))})" if levels else "",
+                                f"rolled {rolls}×" if rolls else "", f"bought {buys} minion{'s' if buys != 1 else ''}")
+                    if x)
+    out = hp(cross, "after") <= 0
+    what = ((f"Round {r}: you were knocked out from {hp(cross, 'before')} HP." if out else
+             f"Round {r}: you dropped from {hp(cross, 'before')} to {hp(cross, 'after')} HP, below 15.")
+            + (f" Their board was a highroll ({opp['ratio']:.1f}× the average for their hero)." if cause == "highroll"
+               else f" On rounds {window[0]}–{r} your board was {trend} of the average for your hero, and you {did}."
+               + (f" (Their board was also a highroll: {opp['ratio']:.1f}× their hero's average.)" if opp.get("highroll")
+                  and opp.get("ratio") else "")))
+    return {"kind": "turning", "round": r, "cause": cause, "what": what, "habit": habit,
+            "damage": hp(cross, "before") - hp(cross, "after"), "ratios": ratios, "levels": levels,
+            "opp": cross.get("opp_hero"), "hp_before": hp(cross, "before"), "hp_after": hp(cross, "after")}
+
+
+def with_simulation(g: dict, ds: list[dict], opponents: list[dict] | None = None) -> list[dict]:
     """Attach simulated fight results (whatif cache) and add better-positioning moments."""
     try:
         from .whatif import load
@@ -233,19 +293,43 @@ def with_simulation(g: dict, ds: list[dict]) -> list[dict]:
                 d["sim_untrusted"] = f.get("trust_why")
     db = None
     fights_by_round = {f["round"]: f for f in ds if f["kind"] == "fight"}
-    opp_hero = {c["round"]: c.get("opp_hero") for c in g.get("combats") or []}
+    combats = {c["round"]: c for c in g.get("combats") or []}
     for c in sim.get("counters") or []:
+        stake = _stake(combats.get(c["round"]), c["base"]["loss"], c["new"]["loss"])
+        if not stake["worth"] or (c["kind"] == "skip_level" and not stake["below_line"]):
+            continue  # a pro takes small losses for tempo; skipping a level is only right when it costs your HP line
         if db is None:
             db = V.card_db(g.get("build") or V.current_bg_meta_build())
         m = _counter_moment(c, db, fights_by_round.get(c["round"]))
-        m["opp"] = m["opp"] or opp_hero.get(c["round"])
+        m["opp"] = m["opp"] or (combats.get(c["round"]) or {}).get("opp_hero")
+        m.update(stake)
         ds.append(m)
+    seen = {f["round"]: f.get("seen_before") for f in opponents or []}
     for p in sim.get("positions") or []:
+        stake = _stake(combats.get(p["round"]), p.get("base_loss", 100), p.get("best_loss", 100))
+        if not seen.get(p["round"]) or not stake["worth"]:
+            continue  # without having seen their board you position by default; hindsight isn't a lesson
+        sb = seen[p["round"]]
         ds.append({"kind": "position", "round": p["round"], "actual": p["actual"], "order": p["order"],
                    "gain": p["gain"], "base_win": p["base_win"], "best_win": p["best_win"], "diff": p["gain"] / 100,
-                   "calc": f"Simulated round {p['round']} fight: your order wins {p['base_win']:.0f}%, "
-                           f"this order {p['best_win']:.0f}% ({p['gain']:+.0f} points), same minions."})
+                   "seen_round": sb["round"], **stake,
+                   "calc": f"You had seen this player's board on round {sb['round']}. Against their board, your order "
+                           f"wins {p['base_win']:.0f}%, this order {p['best_win']:.0f}% (simulated), same minions: "
+                           f"about {stake['saved_hp']:.0f} HP saved."})
     return ds
+
+
+def _stake(c: dict | None, loss_before: float, loss_after: float) -> dict:
+    """What a better line was worth in HP, the currency pros think in. Expected HP saved = the damage
+    you took × how much less likely the loss becomes. Worth a lesson when it saves 5+ HP, or 3+ HP
+    when that fight took you below 15 (the damage-cap line) or out of the game."""
+    c = c or {}
+    dmg = c.get("damage_taken") or 0
+    after = (c.get("hp_after") or 0) + (c.get("armor_after") or 0)
+    saved = round(dmg * max(0.0, loss_before - loss_after) / 100, 1)
+    below = c.get("result") == "LOSS" and after < 15
+    return {"saved_hp": saved, "hp_after": after, "below_line": below,
+            "worth": saved >= 5 or (below and saved >= 3)}
 
 
 LINE_WORDS = {"instead": "Instead of {undone}, buy {buy}", "skip_level": "Skip the level-up ({cost} gold), buy {buy}",
@@ -297,14 +381,23 @@ def card_notes(g: dict, bracket: int) -> list[dict]:
 
 
 def all_decisions(g: dict, bracket: int, strength: list[dict], opponents: list[dict] | None = None) -> list[dict]:
-    """Moments to review: fights (with the matchup), lines that would have changed a lost fight,
-    minion order, risky level-ups. Card-average comparisons are separate (card_notes): context only."""
+    """Moments to review, judged the way a pro would: by HP at stake, not by one fight's odds.
+    - the turning point (where you crossed below 15 HP, and why)
+    - lines that would have saved real HP (simulated, with what was in your shop)
+    - minion order, only against a board you had already seen
+    - playbook habits, and lost fights only against a real highroller (2× their hero's average)
+    Card-average comparisons are separate (card_notes): context only."""
     from .playbook import check as playbook_check
     db = V.card_db(g.get("build") or V.current_bg_meta_build())
-    d = fight_decisions(g, strength, opponents) + level_decisions(g, strength) + playbook_check(g, db)
-    d = with_simulation(g, d)
+    fights = [f for f in fight_decisions(g, strength, opponents) if f.get("highroll") and (f.get("opp_ratio") or 0) >= 2]
+    tp = turning_point(g, strength, opponents)
+    rules = [x for x in playbook_check(g, db)  # the turning point already says it for that round
+             if not (tp and x["rule"] == "level_below_cap" and x["round"] == tp["round"])]
+    fights = [f for f in fights if not (tp and f["round"] == tp["round"])]  # the turning point covers it
+    d = fights + rules + ([tp] if tp else [])
+    d = with_simulation(g, d, opponents)
     countered = {x["round"] for x in d if x["kind"] == "counter"}
     for x in d:
-        if x["kind"] == "fight" and x["round"] in countered:
+        if x["kind"] in ("fight", "turning") and x["round"] in countered:
             x["has_counter"] = True
     return sorted(d, key=lambda x: (x["round"], x["kind"] != "fight"))

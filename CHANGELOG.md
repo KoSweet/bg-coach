@@ -24,6 +24,19 @@ The point first, details on demand.
 - Impact is stated one way: what it cost, in its own unit (pts of win chance, places, HP), no +/-
   signs; "habit" for playbook rules.
 
+### Coaching judged like a pro: by HP at stake, not one fight's odds
+- **Turning point** replaces generic lost-fight lessons: the fight that took you below 15 HP, your
+  board strength on the turns before, and what you spent them on, with the matching habit:
+  levelled while already behind → stabilize first; spent but still fell behind → go for big
+  upgrades; or a highroller with a fine board → little to fix. Close fights with a good board aren't
+  lessons. Top-2 games without a turning point open with "Good game" and the small things.
+- **Counter lines** only when they save real HP (expected HP saved = damage × how much less likely the
+  loss; 5+ HP, or 3+ when the fight took you below 15). "Skip the level-up" only when levelling cost
+  you the 15-HP line (Jeef's rule): no more "skip your turn-2 level to save 2 HP". Shown as HP saved.
+- **Minion order** only against a board you had already seen (positioning with information), and only
+  when it saves real HP; otherwise it was hindsight.
+- Lost fights get their own line only against a real highroller (2× the average for their hero).
+
 ### Fixed
 - The freeze button toggles: a second press unfreezes. "Froze the shop, bought none" counted
   toggled-off freezes (13 false alarms in 11 games, 2 real); the timeline now shows UNFREEZE.

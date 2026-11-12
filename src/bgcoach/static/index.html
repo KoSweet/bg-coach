@@ -390,7 +390,7 @@ async function openGame(file){
       ${iss.length?`<a href="#" class="tag ${iss.some(i=>i.severity==="error")?"err":"warn"}" onclick="openDrawer('dr-issues');return false">${iss.length} data issue${iss.length>1?"s":""}</a>`:""}</div>`;
   $("#gameDetail").innerHTML = `
     <div style="margin-top:12px">${head}</div>
-    ${c.decisions ? oneThingHtml(moments) : `<div class="card"><span class="muted">${esc(g.coach_error||"No coaching for this game.")}</span></div>`}
+    ${c.decisions ? oneThingHtml(moments, g.placement) : `<div class="card"><span class="muted">${esc(g.coach_error||"No coaching for this game.")}</span></div>`}
     ${c.strength ? storyHtml(g, byRound) : ""}
     <div class="card"><h3>Rounds <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· each round's lessons are listed under it · click a round for its shop, board and fight</span></h3>
       ${(g.turns||[]).map(t => roundRowHtml(t, combats[t.round], byRound[t.round]||[])).join("")}</div>
@@ -412,8 +412,15 @@ async function openGame(file){
   show("game");
 }
 // ---------- game page building blocks
-const KIND_ICON = {counter:"⚠", position:"⇅", level:"▲", fight:"⚔", rule:"📘", hero:"★"};
-function oneThingHtml(ms){
+const KIND_ICON = {counter:"⚠", turning:"↘", position:"⇅", level:"▲", fight:"⚔", rule:"📘", hero:"★"};
+function oneThingHtml(ms, placement){
+  // a top-2 game with no real turning point: say so first; the small things come after
+  const real = ms.some(d => d.kind==="counter" || d.kind==="turning");
+  if (placement && placement <= 2 && ms.length && !real) return `<div class="card focus"><h3>Good game · ${placement===1?"you won":"2nd place"}</h3>
+    <div class="big">No turning point and no costly line to fix.</div>
+    <div class="muted" style="font-size:12px;margin:10px 0 2px">SMALL THINGS</div>
+    ${ms.slice(0, 3).map(d => { const [l, ln] = momentParts(d);
+      return `<div class="also" onclick="${d.round?`openRound(${d.round})`:`openDrawer('dr-all')`}"><span class="mo-r">${d.round?"R"+d.round:"Start"}</span><span class="mo-k">${esc(l)}</span><span class="mo-t">${ln}</span><span class="mo-x muted">${esc(d.impact||"")}</span></div>`; }).join("")}</div>`;
   if (!ms.length) return `<div class="card focus"><h3>The one thing</h3><div class="big">Nothing big to fix this game.</div>
     <div class="muted">No line the simulator could find, no habit from the playbook, no clearly better hero.</div></div>`;
   const top = ms[0], [label, line] = momentParts(top);
@@ -502,7 +509,12 @@ function momentParts(d){
   if (d.kind==="counter"){
     if (d.board) det.push(`Board for that fight: ${(d.board||[]).map(icon).join("")}`);
     const risky = (d.risky||[]).length ? ` <span class="tag warn">risky</span>` : "";
-    return ["Counter", `${esc(d.what)}${d.buy_kw&&d.buy_kw.length?` <span class="muted">(${esc(d.buy_kw.join(", "))})</span>`:""} ${icon(d.buy)}: win <b>${Math.round(d.base.win)}%</b> → ${num(Math.round(d.new.win)+"%",true)}, loss ${Math.round(d.base.loss)}% → ${Math.round(d.new.loss)}%${risky}`, `+${Math.round(d.gain)}`, det];
+    const below = d.hp_after!=null ? ` <span class="muted">(you dropped to ${d.hp_after} HP)</span>` : "";
+    return ["Counter", `${esc(d.what)}${d.buy_kw&&d.buy_kw.length?` <span class="muted">(${esc(d.buy_kw.join(", "))})</span>`:""} ${icon(d.buy)} · loss chance <b>${Math.round(d.base.loss)}%</b> → ${num(Math.round(d.new.loss)+"%",true)}${below}${risky}`, d.impact||"", det];
+  }
+  if (d.kind==="turning"){
+    if (d.has_counter) det.push(`➡ A buy from your shop would have saved HP in this fight: see the Counter lesson for round ${d.round}.`);
+    return ["Turning point", esc(d.what), d.impact||"", det];
   }
   if (d.kind==="rule"){
     det.push(`📘 Why pros do it differently: ${esc(d.why)}`);
@@ -511,7 +523,7 @@ function momentParts(d){
   }
   if (d.kind==="buy" && d.situational) det.unshift(`🤔 ${esc(d.situational)}`);
   if (d.kind==="position"){
-    return ["Order", `same minions, other order: <b>${Math.round(d.base_win)}%</b> → ${num(Math.round(d.best_win)+"%",true)} win
+    return ["Order", `you'd seen this board on R${d.seen_round??"?"} · same minions, other order: <b>${Math.round(d.base_win)}%</b> → ${num(Math.round(d.best_win)+"%",true)} win
       <div class="ord">${(d.actual||[]).map(icon).join("")}<span class="muted" style="margin:0 8px">→</span>${(d.order||[]).map(icon).join("")}</div>`, `+${Math.round(d.gain)}%`, det];
   }
   if (d.kind==="level") return ["Level", esc(d.calc), `−${d.damage||0} HP`, []];
@@ -548,7 +560,7 @@ function strengthBars(strength, byRound){
     const flags = ms.map(d=>KIND_ICON[d.kind]||"•").join("");
     return `<div class="bar${byRound?" click":""}" ${byRound?`onclick="openRound(${s.round})"`:""} title="Round ${s.round}: your board ${s.mine} stats vs ${s.meta??"?"} average on this hero (${pct(r)}). ${s.result}.${bb}${ms.length?" · "+ms.map(d=>d.headline||d.kind).join(" · "):""}">
       <span class="fl">${flags}</span><span>${pct(r)}</span><div class="b" style="height:${h}px;background:${col}"></div><span class="r">R${s.round} ${res}${luck}</span></div>`;}).join("")}</div>
-    <div class="muted" style="font-size:11.5px;margin-top:2px">Your board ÷ same-hero average at each fight · ⚠ a better line · ⇅ better order · ▲ risky level · 📘 playbook · ⚔ costly fight · 🎲 lost while favoured · 🍀 won as underdog</div>`;
+    <div class="muted" style="font-size:11.5px;margin-top:2px">Your board ÷ same-hero average at each fight · ⚠ a buy that saves HP · ↘ where the game turned · ⇅ better order (board seen before) · 📘 playbook · ⚔ highroller · 🎲 lost while favoured · 🍀 won as underdog</div>`;
 }
 function lobbyHtml(fights, g){
   // every opponent you fought: their board vs the average for their hero that round
@@ -655,6 +667,14 @@ function showSummary(d){
   // between games: one lesson and one habit, nothing else (the full review is one click away)
   const mmr = d.mmr&&d.mmr_before ? ` · MMR ${d.mmr_before} → ${d.mmr}` : "";
   const l = d.lesson;
+  if (d.good_game) {
+    const small = [l, ...(d.also||[])].filter(Boolean);
+    $("#livePost").innerHTML = `<div class="card focus"><h3>Good game · ${placeTag(d.placement)} ${nm(d.hero)}${esc(mmr)}</h3>
+      <div class="big">No turning point and no costly line to fix.</div>
+      ${small.length?`<div class="muted" style="font-size:12px;margin-top:8px">SMALL THINGS</div>${small.map(a=>`<div style="font-size:13px;margin:2px 0">${esc(a.headline)}</div>`).join("")}`:""}
+      ${d.file?`<div style="margin-top:8px"><button class="btn small" onclick="openGame('${esc(d.file)}')">Open the full game →</button></div>`:""}</div>`;
+    return;
+  }
   const body = l ? `<div class="big" style="font-size:17px;line-height:1.6">${esc(l.headline)}</div>
       ${l.habit?`<div class="habitline">Next game: ${esc(l.habit)}</div>`:""}
       ${(d.also||[]).length?`<div class="muted" style="font-size:12px;margin-top:10px">ALSO</div>${d.also.map(a=>`<div style="font-size:13px;margin:2px 0">${esc(a.headline)}</div>`).join("")}`:""}`
