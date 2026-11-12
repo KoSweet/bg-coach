@@ -53,6 +53,17 @@ The point first, details on demand.
 - The freeze button toggles: a second press unfreezes. "Froze the shop, bought none" counted
   toggled-off freezes (13 false alarms in 11 games, 2 real); the timeline now shows UNFREEZE.
 - Counter lines that turn a sure loss into a tie read "0% to 0% win"; they now show win and loss.
+- **Locked heroes:** without the Tavern Pass the game shows four heroes but only the middle two can
+  be picked. The log marks the other two (`BACON_LOCKED_MULLIGAN_HERO`); they're now recorded
+  (`hero_locked`), shown with a 🔒, and never the advice, live or after the game. Before, the hero
+  verdict named a hero you couldn't pick in 31 of 61 games.
+- **Rally minions lead on purpose:** "Weak minion leading early" no longer fires when the leader has
+  Rally (or another attack trigger): it has to attack to work.
+- **Duos fights you won** were recorded as ties when the hit landed on the enemy's teammate (15 of
+  77 Duos fights). Wins are now read from the enemy team's health on the leaderboard as well. Solo
+  results are unchanged (713 fights re-checked). Logs are parsed again once (parser version 3).
+- **Duos:** no hero verdict after the game (the hero numbers are solo numbers: top 4 of 8 players);
+  the live hero pick says "solo numbers".
 
 ## [0.3.0] - 2026-11-12
 

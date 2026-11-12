@@ -44,7 +44,8 @@ RULES = {
                    "If you can afford a useful buy, don't roll into something you'll only be able to freeze. "
                    "(Rolling your last 1–2 gold is fine: it would be lost anyway.)"),
     "early_order": ("Weak minion leading early", "jeef_pos",
-                    "Turns 1–7: highest attack first, lowest last, to win value trades (except summoners and shields)."),
+                    "Turns 1–7: highest attack first, lowest last, to win value trades (except shields, summoners "
+                    "and Rally minions, which have to attack to work)."),
     "taunt_cleave": ("Taunt in reach of a cleave", "jeef_pos",
                      "With one taunt, put it last (position 7): a cleave then hits one minion, not two."),
     "venom_biggest": ("Biggest minion into venom", "jeef_pos",
@@ -95,13 +96,17 @@ def _size(m: dict) -> int:
     return (m.get("atk") or 0) + max(0, m.get("hp") or 0)
 
 
-def _summons_or_shield(m: dict, db) -> bool:
-    """Minions that are fine up front: divine shields, and deathrattle/avenge summoners (they free space)."""
+def _fine_up_front(m: dict, db) -> bool:
+    """Minions that belong up front even with low attack: divine shields, deathrattle/avenge summoners
+    (they free space), and minions that work when they attack (Rally: leading makes sure it fires,
+    and it fires again on every attack)."""
     if "DIVINE_SHIELD" in (m.get("kw") or []):
         return True
     c = db.get(m.get("card_id")) if db else {}
     mech = set(c.get("mechanics") or [])
-    return bool({"DEATHRATTLE", "AVENGE"} & mech) or "summon" in (c.get("text") or "").lower()
+    text = (c.get("text") or "").lower()
+    return bool({"DEATHRATTLE", "AVENGE", "BACON_RALLY"} & mech) or "summon" in text or "rally" in text \
+        or "whenever this attacks" in text or "after this attacks" in text
 
 
 def _positioning(g: dict, combats: dict, db) -> list[dict]:
@@ -112,7 +117,7 @@ def _positioning(g: dict, combats: dict, db) -> list[dict]:
         if c.get("result") != "LOSS" or len(mine) < 2:
             continue
         # early: a low-attack minion leads while a much bigger hitter waits
-        if r <= 7 and not _summons_or_shield(mine[0], db):
+        if r <= 7 and not _fine_up_front(mine[0], db):
             best = max(mine[1:], key=_atk)
             if _atk(best) >= 2 * max(1, _atk(mine[0])) and _atk(best) - _atk(mine[0]) >= 3:
                 out.append(_rule("early_order", r, f"Led with a {_atk(mine[0])}-attack minion while a "

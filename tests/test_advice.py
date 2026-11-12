@@ -95,3 +95,14 @@ def test_next_opponent_matchup(monkeypatch):
     hub._matchup(stale, 100)
     assert len(started) == 1                                    # 8 rounds old: no simulation against it
     assert stale["last_seen"]["projected"] == 800
+
+
+def test_live_hero_advice_never_names_a_locked_hero(monkeypatch):
+    # without the Tavern Pass the game shows four heroes but only the middle two can be picked
+    from bgcoach import meta, web
+    hm = {"A": {"avg": 3.5, "n": 5000}, "B": {"avg": 4.3, "n": 5000}, "C": {"avg": 4.1, "n": 5000},
+          "D": {"avg": 3.6, "n": 5000}}
+    monkeypatch.setattr(meta, "heroes", lambda bracket: hm)
+    data = {"kind": "HERO_PICK", "options": ["A", "B", "C", "D"], "locked": ["A", "D"]}
+    web.Hub()._advise(data, 50)
+    assert data["best"] == "C" and data["values"]["A"] == 3.5  # locked ones still show their numbers

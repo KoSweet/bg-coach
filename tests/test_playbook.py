@@ -147,3 +147,15 @@ def test_freeze_pressed_twice_is_an_unfreeze():
     t4["actions"] = [{"type": "FREEZE", "gold": 0}]
     t5["shop"] = [{"card_id": "A"}, {"card_id": "B"}, {"card_id": "E"}]
     assert "freeze_unused" in rules(game([t4, t5]))
+
+
+def test_early_order_lets_a_rally_minion_lead():
+    # Rally fires when the minion attacks: leading with it is the point, whatever its attack
+    class DB:
+        def get(self, cid):
+            return {"WHELP": {"mechanics": ["BACON_RALLY"],
+                              "text": "<b>Rally:</b> Your Tavern spells give an extra +1 Health this game."}}.get(cid, {})
+    rally = fight(7, [m(3, 7, cid="WHELP"), m(12, 12), m(4, 3)], [m(5, 5)])
+    plain = fight(7, [m(3, 7), m(12, 12), m(4, 3)], [m(5, 5)])
+    assert "early_order" not in [r["rule"] for r in playbook.check(game([turn(7)], [rally]), DB())]
+    assert "early_order" in [r["rule"] for r in playbook.check(game([turn(7)], [plain]), DB())]

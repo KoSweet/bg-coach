@@ -287,8 +287,8 @@ class Overlay:
         vals, best = d.get("values") or {}, d.get("best")
         if not any(v is not None for v in vals.values()):
             return
-        title = "Hero: avg place at your MMR" if d.get("kind") == "HERO_PICK" else \
-            f"Pick (R{d.get('round')}): avg place, ★ = best that fits"
+        title = ("Hero: avg place at your MMR" + (" (solo)" if d.get("duos") else "")) \
+            if d.get("kind") == "HERO_PICK" else f"Pick (R{d.get('round')}): avg place, ★ = best that fits"
         t = tk.Label(self.advice, text=title, fg=AMBER, bg="#1f1a10", font=(FONT, 9, "bold"))
         t.pack(anchor="w")
         self.advice_rows.append(t)
@@ -300,7 +300,9 @@ class Overlay:
             is_best = opt == best
             fit = (d.get("fit") or {}).get(opt)
             mark = {3: " ✓", 2: "", 1: " ~side", 0: " ✗off"}.get(fit[0], "") if fit else ""
-            txt = f"{'★ ' if is_best else ''}{self.n(opt)}{mark}"
+            if opt in (d.get("locked") or []):
+                mark = " 🔒"  # needs the Tavern Pass
+            txt =f"{'★ ' if is_best else ''}{self.n(opt)}{mark}"
             tk.Label(row, text=txt if len(txt) <= 26 else txt[:25] + "…", fg=GREEN if is_best else FG, bg="#1f1a10",
                      font=(FONT, 9, "bold" if is_best else "normal")).pack(side="left", padx=4)
             tk.Label(row, text=f"{v:.2f}" if v is not None else "?", fg=GREEN if is_best else MUTED, bg="#1f1a10",

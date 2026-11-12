@@ -97,16 +97,21 @@ def game_analysis(g: dict, bracket: int) -> dict:
     db = V.card_db(g.get("build") or V.current_bg_meta_build())
     out: dict = {"bracket": bracket, "placement": g.get("placement")}
 
-    # ---- hero pick (meta): only relevant at the start, so it comes with the reasons
+    # ---- hero pick (meta): only relevant at the start, so it comes with the reasons.
+    # Only heroes you could pick count: without the Tavern Pass the outer two of four are locked.
+    # Duos is left out: the hero numbers are solo numbers (top 4 of 8 players).
+    locked = set(g.get("hero_locked") or [])
     offered = []
     for h in g.get("hero_offers") or []:
         m = hm.get(h)
-        offered.append({"hero": h, "avg": m["avg"] if m and m["n"] >= 100 else None, "n": m["n"] if m else 0})
-    known = [o for o in offered if o["avg"] is not None]
+        offered.append({"hero": h, "avg": m["avg"] if m and m["n"] >= 100 else None, "n": m["n"] if m else 0,
+                        **({"locked": True} if h in locked else {})})
+    known = [o for o in offered if o["avg"] is not None and not o.get("locked")]
     picked = next((o for o in offered if norm_hero(o["hero"]) == norm_hero(g.get("hero"))), None)
     tribes = lobby_tribes(g, db)
     out["lobby_tribes"] = tribes
-    if picked and picked["avg"] is not None and len(known) >= 2:
+    duos = "DUO" in (g.get("game_type") or "")
+    if picked and picked["avg"] is not None and len(known) >= 2 and not duos:
         best = min(known, key=lambda o: o["avg"])
         s_p, s_b = Stat(picked["avg"], picked["n"]), Stat(best["avg"], best["n"])
         prof = {o["hero"]: hero_profile(o["hero"], hm, db, tribes) for o in offered}

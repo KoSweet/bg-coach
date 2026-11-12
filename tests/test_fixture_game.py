@@ -143,3 +143,21 @@ def test_end_of_turn_shop_and_lobby_view(fixture_game):
     import json
     fights = lobby.fights(json.loads(json.dumps(g.to_dict(), default=str)))  # no hero averages offline
     assert len(fights) == 14 and fights[7]["seen_before"] == {"round": 1, "stats": fights[0]["stats"]}
+
+
+def test_locked_hero_offers(fixture_game):
+    # the log marks the heroes only the Tavern Pass unlocks: here the outer two of four
+    assert fixture_game.hero_locked == ["TB_BaconShop_HERO_67_SKIN_F", "BG22_HERO_001"]
+
+
+def test_duos_win_is_read_from_the_enemy_teams_health(monkeypatch):
+    # in Duos the hit lands on whichever enemy hero fought last; the leaderboard shows the team's health
+    from bgcoach.replay import Game, Replay
+    r = Replay()
+    r.g = Game(game_type="GT_BATTLEGROUNDS_DUO")
+    r.cur_combat = {"round": 3, "hp_before": 30, "armor_before": 10, "opp_lobby_id": 7,
+                    "_lobby": {"7": {"hp": 50}, "8": {"hp": 50}}}
+    monkeypatch.setattr(r, "lobby", lambda: {"7": {"hp": 41}, "8": {"hp": 41}})
+    r._close_combat()
+    c = r.g.combats[-1]
+    assert c["result"] == "WIN" and c["damage_dealt"] == 9 and "_lobby" not in c

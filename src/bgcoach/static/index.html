@@ -399,7 +399,7 @@ async function openGame(file){
       ${lobbyHtml(c.lobby, g)}
       ${cardNotesHtml([...(c.card_notes||[]), ...(c.picks||[]).filter(p=>p.clear).map(pickNote)], false)}
       <details id="dr-board"><summary><b>Heroes offered and final board</b></summary>
-        <div class="row" style="margin-top:6px"><span class="lbl">offered</span>${(g.hero_offers||[]).map(h=>chip({card_id:h, golden:h===g.hero})).join("")}</div>
+        <div class="row" style="margin-top:6px"><span class="lbl">offered</span>${(g.hero_offers||[]).map(h=>chip({card_id:h, golden:h===g.hero})+((g.hero_locked||[]).includes(h)?`<span class="muted" title="locked: needs the Tavern Pass">🔒</span>`:"")).join("")}</div>
         <div class="row"><span class="lbl">final</span>${cardsImg(g.final_board)}</div>
         ${g.anomaly?`<div class="row"><span class="lbl">anomaly</span><span class="mini">${nm(g.anomaly)}</span></div>`:""}</details>
       ${CUR_SHOTS.length?`<details id="dr-shots"><summary><b>📷 Your screenshots</b> <span class="muted">(${CUR_SHOTS.length})</span></summary>${CUR_SHOTS.map(x=>shotHtml(x, `<b>Round ${x.round??"?"}</b>`)).join("")}</details>`:""}
@@ -648,11 +648,13 @@ refreshHealthBadge();
 // ---------- live advice + post-game summary
 function showOffers(d){
   const vals = d.values||{}; if (!Object.values(vals).some(v=>v!=null)) return;
-  const title = d.kind==="HERO_PICK" ? "Hero pick: average placement at your MMR" : `${esc((d.kind||"").replace(/_/g," ").toLowerCase())}: average placement on round ${d.round}`;
+  const title = d.kind==="HERO_PICK" ? `Hero pick: average placement at your MMR${d.duos?" (solo numbers)":""}` : `${esc((d.kind||"").replace(/_/g," ").toLowerCase())}: average placement on round ${d.round}`;
+  const locked = new Set(d.locked||[]);  // shown by the game, but only the Tavern Pass unlocks them
   $("#liveAdvice").innerHTML = `<div class="card focus"><h3>${title} <span class="muted">(lower is better)</span></h3>
     <div class="row">${(d.options||[]).map(o=>`<div style="display:inline-block;text-align:center">${chip({card_id:o, golden:o===d.best})}
       <div style="font-size:15px;font-weight:700;${o===d.best?"color:var(--good)":""}">${vals[o]??"?"}${o===d.best?" ★":""}</div>
-      ${d.fit&&d.fit[o]?`<div class="muted" style="font-size:11px;max-width:90px" title="${esc(d.fit[o][1])}">${FIT_MARK(d.fit[o][0])}</div>`:""}</div>`).join("")}</div>
+      ${d.fit&&d.fit[o]?`<div class="muted" style="font-size:11px;max-width:90px" title="${esc(d.fit[o][1])}">${FIT_MARK(d.fit[o][0])}</div>`:""}
+      ${locked.has(o)?`<div class="muted" style="font-size:11px">🔒 locked</div>`:""}</div>`).join("")}</div>
     ${d.close?`<div style="font-size:13px;margin-top:4px">≈ ${nm(d.best)} and ${nm(d.close)} are too close to call on the numbers (within chance): pick what your board needs.</div>`:""}
     ${d.tempo?`<div style="font-size:13px;margin-top:4px">♥ You're at <b>${d.tempo.hp} HP</b>: ${nm(d.tempo.card)} adds more to your board right now (+${d.tempo.more} stats). Surviving the next fight comes first.</div>`:""}
     ${d.fit?`<div class="muted" style="font-size:12px">★ = lowest average among the options that fit your build best (✓ fits · flexible · ~ side tribe · ✗ off)</div>`:""}</div>`;

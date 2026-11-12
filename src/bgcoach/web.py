@@ -104,7 +104,8 @@ class Hub:
             cm = meta.cards(bracket)
             stats = {o: cm.stat(o, data.get("round") or 1) for o in opts}
         vals = {o: s.avg if s else None for o, s in stats.items()}
-        known = [o for o in opts if stats[o]]
+        locked = set(data.get("locked") or [])  # heroes you can't pick (Tavern Pass only): never the advice
+        known = [o for o in opts if stats[o] and o not in locked]
         data["values"] = {o: (round(v, 2) if v is not None else None) for o, v in vals.items()}
         data["bracket"] = bracket
         best, top = (min(known, key=vals.get) if known else None), known

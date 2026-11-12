@@ -44,7 +44,8 @@ BUTTONS = {
 }
 # Bump when the game record gains or changes fields: `bgcoach import` (and the app) then re-parse
 # every archived log once, so older games get them too. 2 = lobby, end-of-turn shop.
-PARSER_VERSION = 2
+# 3 = locked hero offers; fights won in Duos (read from the enemy team's health).
+PARSER_VERSION = 3
 SHOP_TYPES = {"MINION", "BATTLEGROUND_SPELL", "SPELL"}
 KEYWORD_TAGS = ("TAUNT", "DIVINE_SHIELD", "REBORN", "WINDFURY", "VENOMOUS", "POISONOUS", "STEALTH", "CLEAVE")
 
@@ -81,7 +82,8 @@ class Game:
     me_name: str | None = None
     account: int | None = None      # Battle.net account (GameAccountId lo) of the log owner
     hero_offers: list = field(default_factory=list)
-    hero: str | None = None
+    hero_locked: list = field(default_factory=list)  # offers you couldn't pick (without the Tavern Pass:
+    hero: str | None = None                           # the outer two of four)
     anomaly: str | None = None
     turns: list = field(default_factory=list)       # one dict per round
     combats: list = field(default_factory=list)
@@ -489,7 +491,8 @@ class Replay:
             hero = self._my_hero()
             self.cur_combat = {"round": self._round(), "line": self.line_no, "t": self.now.isoformat(timespec="seconds"), "hp_before": self._hp(hero),
                                "armor_before": hero.int("ARMOR") if hero else 0,
-                               "my_board": None, "opp_board": None, "opp_hero": None}
+                               "my_board": None, "opp_board": None, "opp_hero": None,
+                               "_lobby": self.lobby()}  # health before the fight, to see who was hit
             if hero is not None:
                 opp_pid = hero.int("NEXT_OPPONENT_PLAYER_ID", 0)
                 self.cur_combat["opp_lobby_id"] = opp_pid or None
@@ -527,6 +530,13 @@ class Replay:
             taken = (c["hp_before"] + c["armor_before"]) - (hp_after + armor_after)
         c.pop("_opp_hero_ent", None)
         dealt = c.pop("_pre", 0)  # hero hit is logged as PREDAMAGE on the opponent's combat hero
+        before, opp = c.pop("_lobby", None) or {}, str(c.get("opp_lobby_id"))
+        if not dealt and opp in before:
+            # Duos: the hit lands on whichever enemy hero fought last, so read it from their team's
+            # health on the leaderboard instead (both teammates show the shared total)
+            was, now = before[opp].get("hp"), (self.lobby().get(opp) or {}).get("hp")
+            if isinstance(was, int) and isinstance(now, int) and was > now:
+                dealt = was - now
         c["hp_after"], c["armor_after"], c["damage_taken"], c["damage_dealt"] = hp_after, armor_after, taken, dealt
         c["line_end"] = self.line_no
         if taken and taken > 0:
@@ -720,9 +730,13 @@ class Replay:
             eid = self._ref(m.group(1))
             e = self.ents.get(eid) if eid else None
             self.pending_choice["options"].append(e.card_id if e else None)
+            if e and e.int("BACON_LOCKED_MULLIGAN_HERO") == 1:  # shown, but only the Tavern Pass unlocks it
+                self.pending_choice.setdefault("locked", []).append(e.card_id)
             ch = self.pending_choice  # announce while you are still choosing (live advice)
             self._emit("offers", {"id": ch["id"], "kind": self._choice_kind(ch), "round": self._round(),
-                                  "source": ch["source"], "options": list(ch["options"])})
+                                  "source": ch["source"], "options": list(ch["options"]),
+                                  "locked": list(ch.get("locked") or []),
+                                  "duos": "DUO" in (self.g.game_type or "") if self.g else False})
 
     def _chosen(self, body: str):
         m = CHOSEN_HDR_RE.match(body)
@@ -746,6 +760,7 @@ class Replay:
         ch["_done"] = True
         if rec["kind"] == "HERO_PICK":
             self.g.hero_offers = ch["options"]
+            self.g.hero_locked = list(ch.get("locked") or [])
             self.g.hero = picked
         self.g.choices.append(rec)
         if self.cur_turn is not None and rec["kind"] != "HERO_PICK":
