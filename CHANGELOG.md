@@ -2,6 +2,33 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org/).
 
+## [Unreleased]
+
+The point first, details on demand.
+
+### Changed
+- **The one thing:** every game is reduced to its most important lesson plus a habit for the next
+  game, ranked by kind (a concrete line you could have played, then minion order, a risky level-up,
+  the hero pick, a playbook habit, and lost fights last) and by size within the kind
+  (`lessons.py`). The game page, the after-game card, the overlay and Improve all use it.
+- **Game page:** a one-line header, the one thing with "also" lines, the game's story (click a bar
+  to open that round), then every round in one line with its lessons underneath; the shop, board
+  and fight open on click. The lobby, card numbers, final board and screenshots are drawers at the
+  bottom. A 14-round game fits in about 1,500 px instead of 6,000+.
+- **Between games:** the after-game card sits at the top of the Live tab and shows only the lesson,
+  the habit and two "also" lines; it updates once the simulator has checked the game's fights. The
+  overlay shows the same lesson until the next game starts.
+- **Improve:** starts with your focus (the costliest habit you can practise, never a lost fight),
+  whether it's getting better game by game, and its biggest example; then other habits, decisions
+  and, in a drawer, your stats.
+- Impact is stated one way: what it cost, in its own unit (pts of win chance, places, HP), no +/-
+  signs; "habit" for playbook rules.
+
+### Fixed
+- The freeze button toggles: a second press unfreezes. "Froze the shop, bought none" counted
+  toggled-off freezes (13 false alarms in 11 games, 2 real); the timeline now shows UNFREEZE.
+- Counter lines that turn a sure loss into a tie read "0% to 0% win"; they now show win and loss.
+
 ## [0.3.0] - 2026-11-12
 
 Coaching that reads the lobby, like a coach watching over your shoulder.

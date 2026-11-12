@@ -104,6 +104,32 @@ details.mo summary:hover{background:var(--panel2)}
 .mo-d{padding:4px 8px 10px 152px;font-size:12.5px;color:var(--muted);line-height:1.6}
 .mo-g{padding:0 8px 2px 152px;font-size:12px;color:var(--muted)}
 @media (max-width:700px){details.mo summary{grid-template-columns:36px 1fr 60px}.mo-k{display:none}.mo-d,.mo-g{padding-left:8px}}
+/* game page: the point first, then the story, then rounds, then everything else */
+.gamehead{font-size:18px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.gamehead .muted{font-size:13px}
+.habitline{margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(224,162,58,.10);border-left:3px solid var(--accent);font-size:13.5px}
+.also{display:grid;grid-template-columns:44px 96px 1fr 110px;gap:8px;align-items:center;padding:5px 2px;cursor:pointer;border-top:1px solid var(--line)}
+.also:hover{background:var(--panel2)}
+.mo-x{white-space:nowrap}
+.rd{border-bottom:1px solid var(--line)}
+.rd-sum{display:grid;grid-template-columns:44px 64px 1fr 70px 110px 64px;gap:8px;align-items:center;padding:7px 2px;cursor:pointer;font-size:13px}
+.rd-sum:hover,.rd.open>.rd-sum{background:var(--panel2)}
+.rd-sum .mo-r::after{content:" ▸";font-weight:400;opacity:.6}.rd.open>.rd-sum .mo-r::after{content:" ▾"}
+.rd-t{color:var(--accent);font-weight:600}.rd-a{color:var(--muted)}.rd-f{letter-spacing:2px}.rd-hp{text-align:right}
+.rd-ms{margin:0 0 4px 44px;border-left:3px solid var(--accent);padding-left:6px}
+.rd-ms details.mo summary{padding:4px 2px}
+.rd-body{display:none}.rd.open>.rd-body{display:block}
+.rd .round{margin-top:4px}
+.rd.flash>.rd-sum{outline:2px solid var(--accent);outline-offset:-2px}
+.card h3 .cost{text-transform:none;letter-spacing:0}
+.mo-x .muted,.mo-x.muted{color:var(--muted);font-weight:400}
+footer a{color:var(--muted)}
+.drawers details{border-top:1px solid var(--line);padding:8px 0}
+.drawers details>summary{cursor:pointer}
+.bar.click{cursor:pointer}.bar.click:hover .b{filter:brightness(1.3)}
+.bar .fl{min-height:14px;font-size:11px;letter-spacing:1px}
+.hab{display:grid;grid-template-columns:48px 1fr 110px;gap:8px;align-items:start;padding:7px 0;border-bottom:1px solid var(--line)}
+@media (max-width:700px){.rd-sum{grid-template-columns:36px 54px 1fr 70px}.rd-ms{margin-left:0}.rd-a,.rd-f{display:none}.also{grid-template-columns:36px 1fr 80px}.also .mo-k{display:none}}
 .testbadge{background:#2b2350;border:1px solid #6d5bd0;color:#c9bfff;border-radius:6px;padding:2px 8px;font-size:12px;margin-left:8px}
 .toast{position:fixed;bottom:18px;right:18px;background:var(--good);color:#06210f;padding:8px 14px;border-radius:8px;font-weight:600;display:none}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-right:6px}
@@ -133,6 +159,7 @@ details.mo summary:hover{background:var(--panel2)}
 <main>
   <!-- LIVE -->
   <section id="tab-live">
+    <div id="livePost"></div>
     <div class="card">
       <h3><span class="dot" id="liveDot"></span>Live game <span id="testBadge"></span> <span class="tag" id="checkTag" title="Every buy/sell/level/play/refresh is verified against what the game logged next">checks: -</span>
         <button class="btn small" style="float:right" onclick="flag('live')">⚑ Something missing or wrong?</button></h3>
@@ -318,7 +345,7 @@ function roundHtml(t, combat, ctx){
     ${t.hand&&t.hand.length?`<div class="row"><span class="lbl">hand</span>${cardsImg(t.hand)}</div>`:""}
     <div class="row"><span class="lbl">shop</span>${cardsImg(t.shop)}</div>
     ${shots.length?`<div class="row"><span class="lbl">📷</span>${shots.map(x=>shotHtml(x)).join("")}</div>`:""}
-    ${(t.actions||[]).map(actionHtml).join("")}
+    ${(() => { let fz = 0; return (t.actions||[]).map(a => a.type==="FREEZE" && ++fz % 2 === 0 ? {...a, type:"UNFREEZE"} : a).map(actionHtml).join(""); })()}
     ${combatHtml(combat)}</div>`;
 }
 
@@ -353,24 +380,87 @@ async function openGame(file){
   CUR_SHOTS = g.screenshots || [];
   const combats = {}; (g.combats||[]).forEach(c => combats[c.round]=c);
   const iss = g.issues||[];
-  const hdt = g.hdt ? `HDT: place ${g.hdt.placement}, MMR ${g.hdt.rating} → ${g.hdt.rating_after}` : "not in HDT";
+  const mmr = g.hdt && g.hdt.rating ? ` · MMR ${g.hdt.rating} → ${g.hdt.rating_after}` : "";
+  const c = g.coach || {};
+  const moments = c.decisions || [];                       // ranked: [0] is the one thing
+  const byRound = {}; moments.forEach(d => (byRound[d.round] = byRound[d.round] || []).push(d));
+  // 1. who / where, in one line
+  const head = `<div class="gamehead">${placeTag(g.placement)} <b>${nm(g.hero)}</b>
+      <span class="muted">· ${(g.turns||[]).length} rounds${esc(mmr)} · ${esc((g.start||"").replace("T"," ").slice(0,16))} · build ${g.build}</span>
+      ${iss.length?`<a href="#" class="tag ${iss.some(i=>i.severity==="error")?"err":"warn"}" onclick="openDrawer('dr-issues');return false">${iss.length} data issue${iss.length>1?"s":""}</a>`:""}</div>`;
   $("#gameDetail").innerHTML = `
-    <div class="card" style="margin-top:12px">
-      <h3>${esc((g.start||"").replace("T"," ").slice(0,16))} · build ${g.build}</h3>
-      <div style="font-size:18px">${placeTag(g.placement)} <b>${nm(g.hero)}</b> <span class="muted">· ${(g.turns||[]).length} rounds · ${esc(hdt)}</span></div>
-      <div class="row" style="margin-top:6px"><span class="lbl">offered</span>${(g.hero_offers||[]).map(h=>chip({card_id:h, golden:h===g.hero})).join("")}</div>
-      <div class="row"><span class="lbl">final</span>${cardsImg(g.final_board)}</div>
-      ${g.anomaly?`<div class="row"><span class="lbl">anomaly</span><span class="mini">${nm(g.anomaly)}</span></div>`:""}
-    </div>
-    ${iss.length?`<div class="card"><h3>Data issues <button class="btn small" style="float:right" id="gameReport">Copy report for Claude</button></h3>
-      ${iss.map(i=>`<div><span class="tag ${i.severity==="error"?"err":"warn"}">${i.severity}</span> ${esc(i.message)}</div>`).join("")}</div>`:""}
-    ${coachHtml(g)}
-    ${CUR_SHOTS.length?`<div class="card"><h3>📷 Your screenshots in this game</h3>${CUR_SHOTS.map(x=>shotHtml(x, `<b>Round ${x.round??"?"}</b>`)).join("")}</div>`:""}
-    <div class="card"><h3>Timeline</h3>${(g.turns||[]).map(t=>roundHtml(t, combats[t.round], "game")).join("")}</div>`;
+    <div style="margin-top:12px">${head}</div>
+    ${c.decisions ? oneThingHtml(moments) : `<div class="card"><span class="muted">${esc(g.coach_error||"No coaching for this game.")}</span></div>`}
+    ${c.strength ? storyHtml(g, byRound) : ""}
+    <div class="card"><h3>Rounds <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· each round's lessons are listed under it · click a round for its shop, board and fight</span></h3>
+      ${(g.turns||[]).map(t => roundRowHtml(t, combats[t.round], byRound[t.round]||[])).join("")}</div>
+    <div class="card drawers"><h3>More</h3>
+      ${moments.length?`<details id="dr-all"><summary><b>All moments</b> <span class="muted">(${moments.length}, most important first)</span></summary>${moments.map(d=>momentHtml(d,false)).join("")}</details>`:""}
+      ${lobbyHtml(c.lobby, g)}
+      ${cardNotesHtml([...(c.card_notes||[]), ...(c.picks||[]).filter(p=>p.clear).map(pickNote)], false)}
+      <details id="dr-board"><summary><b>Heroes offered and final board</b></summary>
+        <div class="row" style="margin-top:6px"><span class="lbl">offered</span>${(g.hero_offers||[]).map(h=>chip({card_id:h, golden:h===g.hero})).join("")}</div>
+        <div class="row"><span class="lbl">final</span>${cardsImg(g.final_board)}</div>
+        ${g.anomaly?`<div class="row"><span class="lbl">anomaly</span><span class="mini">${nm(g.anomaly)}</span></div>`:""}</details>
+      ${CUR_SHOTS.length?`<details id="dr-shots"><summary><b>📷 Your screenshots</b> <span class="muted">(${CUR_SHOTS.length})</span></summary>${CUR_SHOTS.map(x=>shotHtml(x, `<b>Round ${x.round??"?"}</b>`)).join("")}</details>`:""}
+      ${iss.length?`<details id="dr-issues"><summary><b>Data issues</b> <span class="muted">(${iss.length})</span></summary>
+        <button class="btn small" id="gameReport" style="margin:6px 0">Copy report</button>
+        ${iss.map(i=>`<div><span class="tag ${i.severity==="error"?"err":"warn"}">${i.severity}</span> ${esc(i.message)}</div>`).join("")}</details>`:""}
+    </div>`;
   history.replaceState(null,"","#game="+encodeURIComponent(file));
   if (iss.length) $("#gameReport").onclick = async()=>copy(await reportFor("game="+encodeURIComponent(file)));
   show("game");
 }
+// ---------- game page building blocks
+const KIND_ICON = {counter:"⚠", position:"⇅", level:"▲", fight:"⚔", rule:"📘", hero:"★"};
+function oneThingHtml(ms){
+  if (!ms.length) return `<div class="card focus"><h3>The one thing</h3><div class="big">Nothing big to fix this game.</div>
+    <div class="muted">No line the simulator could find, no habit from the playbook, no clearly better hero.</div></div>`;
+  const top = ms[0], [label, line] = momentParts(top);
+  const also = ms.slice(1, 3).map(d => { const [l, ln] = momentParts(d);
+    return `<div class="also" onclick="${d.round?`openRound(${d.round})`:`openDrawer('dr-all')`}"><span class="mo-r">${d.round?"R"+d.round:"Start"}</span><span class="mo-k">${esc(l)}</span><span class="mo-t">${ln}</span><span class="mo-x ${d.impact==="habit"?"muted":""}">${esc(d.impact||"")}</span></div>`; }).join("");
+  return `<div class="card focus"><h3>The one thing <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· ${top.round?"round "+top.round:"hero pick"} · ${esc(label)}</span>
+      <span class="cost" style="float:right;font-size:16px">${esc(top.impact||"")}</span></h3>
+    <div class="big" style="font-size:17px;line-height:1.7">${line}</div>
+    ${top.habit?`<div class="habitline">Next game: ${esc(top.habit)}</div>`:""}
+    <div style="margin-top:8px">${top.round?`<button class="btn small" onclick="openRound(${top.round})">Open round ${top.round} ↓</button>`:""}
+      <button class="btn small" onclick="openDrawer('dr-all')">Why? All the details ↓</button></div>
+    ${also?`<div class="alsos"><div class="muted" style="font-size:12px;margin:10px 0 2px">ALSO</div>${also}</div>`:""}</div>`;
+}
+function storyHtml(g, byRound){
+  const c = g.coach, sp = c.strength_phase||{}, tr = c.tier_round||{};
+  const col = v => v==null ? "" : v>=1 ? "good" : v>=0.8 ? "warn" : "bad";
+  const luck = c.luck && c.luck.fights_with_odds ? ` · luck 🎲 ${c.luck.unlucky_losses.length} 🍀 ${c.luck.lucky_wins.length}` : "";
+  return `<div class="card"><h3>Game story <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· click a round to open it</span></h3>
+    ${strengthBars(c.strength, byRound)}
+    <div class="muted" style="font-size:12.5px;margin-top:6px">Board vs same hero: <b class="${col(sp.early)}">${pct(sp.early)}</b> early · <b class="${col(sp.mid)}">${pct(sp.mid)}</b> mid · <b class="${col(sp.late)}">${pct(sp.late)}</b> late
+      · T4 ${tr[4]?"R"+tr[4]:"–"} · T5 ${tr[5]?"R"+tr[5]:"–"} · T6 ${tr[6]?"R"+tr[6]:"–"}${luck}</div></div>`;
+}
+function roundRowHtml(t, c, ms){
+  const acts = t.actions||[]; const n = k => acts.filter(a=>a.type===k).length;
+  const lv = acts.filter(a=>a.type==="LEVEL").map(a=>a.to_tier).pop();
+  const triples = acts.filter(a=>a.type==="CAST" && a.card_id==="TB_BaconShop_Triples_01").length;
+  const bits = [lv?"level":"", n("BUY")?`${n("BUY")} buy${n("BUY")>1?"s":""}`:"", n("SELL")?`${n("SELL")} sell${n("SELL")>1?"s":""}`:"",
+    n("REFRESH")?`${n("REFRESH")} roll${n("REFRESH")>1?"s":""}`:"", triples?`${triples} triple${triples>1?"s":""}`:"",
+    n("DARK_GIFT")?"Dark Gift":"", n("FREEZE")%2?"freeze":""].filter(Boolean).join(" · ") || "no actions";
+  const res = !c ? "" : c.result==="WIN" ? `<b class="good">W</b> <span class="muted">dealt ${c.damage_dealt??"?"}</span>`
+            : c.result==="LOSS" ? `<b class="bad">L</b> <span class="bad">−${c.damage_taken} HP</span>` : `<b class="muted">T</b>`;
+  const hp = c && c.hp_after!=null ? (c.hp_after + (c.armor_after||0) > 0 ? `${c.hp_after + (c.armor_after||0)} HP` : `<b class="bad">out</b>`) : "";
+  const flags = ms.map(d=>`<span title="${esc(d.headline||d.kind)}">${KIND_ICON[d.kind]||"•"}</span>`).join("")
+              + (CUR_SHOTS.some(x=>x.round===t.round) ? `<span title="your screenshot">📷</span>` : "");
+  // the round's lessons stay visible when the round is closed; the shop/board/fight detail opens on click
+  return `<div class="rd" id="rd-${t.round}"><div class="rd-sum" onclick="this.parentNode.classList.toggle('open')">
+      <span class="mo-r">R${t.round}</span><span class="rd-t">T${t.tier}${lv?`→${lv}`:""}</span>
+      <span class="rd-a">${bits}</span><span class="rd-f">${flags}</span><span class="rd-res">${res}</span><span class="rd-hp muted">${hp}</span></div>
+    ${ms.length?`<div class="rd-ms">${ms.map(d=>momentHtml(d,false)).join("")}</div>`:""}
+    <div class="rd-body">${roundHtml(t, c, "game")}</div></div>`;
+}
+window.openRound = r => { const el = document.getElementById("rd-"+r); if (!el) return; el.classList.add("open");
+  el.scrollIntoView({behavior:"smooth", block:"start"}); el.classList.add("flash"); setTimeout(()=>el.classList.remove("flash"), 1600); };
+window.openDrawer = id => { const el = document.getElementById(id); if (!el) return; el.open = true; el.scrollIntoView({behavior:"smooth", block:"start"}); };
+const pickNote = p => ({kind:"pick", pick_kind:p.kind, round:p.round, you:p.picked, you_val:p.picked_avg,
+  better:p.best, better_val:p.best_avg, diff:p.loss, picked_fit:p.picked_fit, best_fit:p.best_fit, impact:`${p.loss.toFixed(2)} places`,
+  calc:`Average placement at your MMR when taken on round ${p.round}: ${nm(p.picked)} ${p.picked_avg} (${(p.picked_n||0).toLocaleString()} games), ${nm(p.best)} ${p.best_avg} (${(p.best_n||0).toLocaleString()} games); chance alone could explain up to ${p.noise}.`});
 
 
 // ---------- moments (one line each, details on click) — shared by game page + Improve
@@ -405,7 +495,7 @@ function momentParts(d){
     if (d.sim) det.push(`🎯 Simulated (matches the real fight): ${Math.round(d.sim.win)}% win · ${Math.round(d.sim.tie)}% tie · ${Math.round(d.sim.loss)}% loss`);
     if (d.sim_untrusted) det.push(`🎯 Not simulated: the simulator couldn't reproduce this fight (${esc(d.sim_untrusted)}), e.g. a hero power or trinket it doesn't know.`);
     if (d.no_counter) det.push(`🔍 Nothing in your shop at the end of that turn wins this fight (${d.no_counter.tried} lines simulated; best: ${nm(d.no_counter.best_buy)}, still ${Math.round(d.no_counter.best.loss)}% loss). It was decided before this turn: look at the rounds where your board fell behind.`);
-    if (d.has_counter) det.push(`➡ There was a line that changes this fight: see the next moment.`);
+    if (d.has_counter) det.push(`➡ There was a line that changes this fight: see the Counter moment for round ${d.round}.`);
     const label = d.highroll ? "Highroller" : "Fight";
     return [label, `lost to ${tl(d.opp)}${them} · yours <b class="${d.ratio<0.9?'bad':''}">${Math.round(d.ratio*100)}%</b> of avg${bb}`, `−${d.damage} HP`, det];
   }
@@ -428,7 +518,11 @@ function momentParts(d){
   return [d.kind, esc(d.calc||""), "", det];
 }
 function momentHtml(d, withGame){
-  const [label, line, impact, det] = momentParts(d);
+  const [label, line, oldImpact, det] = momentParts(d);
+  if (d.habit) det.push(`💡 Next game: ${esc(d.habit)}`);
+  // one way to state impact: what it cost, in its own unit, no +/- signs
+  const imp = d.impact || String(oldImpact||"").replace(/^[−+-]/, "");
+  const impact = `<span class="${imp==="habit"?"muted":""}">${esc(imp)}</span>`;
   const game = withGame ? `<div class="mo-g">${esc((d.start||"").slice(0,16).replace("T"," "))} · ${nm(d.hero)} · place ${d.placement} · <a href="#" onclick="openGame('${esc(d.file)}');return false">open game</a></div>` : "";
   return `<details class="mo"><summary><span class="mo-r">${d.round?"R"+d.round:"Start"}</span><span class="mo-k">${esc(label)}</span>
     <span class="mo-t">${withGame?`<span class="muted" style="font-size:12px">${icon(d.hero)}${esc((d.start||"").slice(5,10))} #${d.placement} · </span>`:""}${line}</span><span class="mo-x">${impact}</span></summary>${game}<div class="mo-d">${det.map(x=>`<div>${x}</div>`).join("")}</div></details>`;
@@ -441,47 +535,20 @@ function statsTableHtml(rows){
 
 // ---------- coaching
 const pct = v => v==null ? "–" : Math.round(v*100)+"%";
-function strengthBars(strength){
+function strengthBars(strength, byRound){
   if (!strength || !strength.length) return "";
   const max = Math.max(1.6, ...strength.map(s=>s.ratio||0));
-  return `<div class="bars" style="height:96px">${strength.map(s=>{
+  return `<div class="bars" style="height:110px">${strength.map(s=>{
     const r = s.ratio; const h = r==null ? 4 : Math.max(4, 100*r/max);
     const col = r==null ? "var(--line)" : r>=1 ? "var(--good)" : r>=0.8 ? "var(--warn)" : "var(--bad)";
     const res = s.result==="WIN" ? "W" : s.result==="LOSS" ? "L" : "T";
     const bb = s.bb ? ` Bob's Buddy: ${Math.round(s.bb.win)}% win / ${Math.round(s.bb.loss)}% loss.` : "";
     const luck = s.bb && s.bb.win>=50 && s.result==="LOSS" ? "🎲" : s.bb && s.bb.loss>=50 && s.result==="WIN" ? "🍀" : "";
-    return `<div class="bar" title="Round ${s.round}: your board ${s.mine} stats vs ${s.meta??"?"} average on this hero (${pct(r)}). ${s.result}.${bb}">
-      <span>${pct(r)}</span><div class="b" style="height:${h}px;background:${col}"></div><span class="r">R${s.round} ${res}${luck}</span></div>`;}).join("")}</div>
-    <div class="muted" style="font-size:11.5px;margin-top:2px">Your board ÷ same-hero average at each fight · 🎲 lost while favoured · 🍀 won as underdog</div>`;
-}
-function coachHtml(g){
-  const c = g.coach;
-  if (!c) return g.coach_error ? `<div class="card"><h3>Coach</h3><span class="muted">${esc(g.coach_error)}</span></div>` : "";
-  const hp = c.hero_pick, sp = c.strength_phase, tr = c.tier_round||{};
-  const col = v => v==null ? "" : v>=1 ? "good" : v>=0.8 ? "warn" : "bad";
-  const heroV = !hp ? "" : hp.loss<=0.05 ? `<span class="good">✓ best hero offered</span>` : `${tl(g.hero)} ${hp.picked_avg} vs ${tl(hp.best)} <b class="good">${hp.best_avg}</b>`;
-  const luck = c.luck && c.luck.fights_with_odds ? `🎲 ${c.luck.unlucky_losses.length} · 🍀 ${c.luck.lucky_wins.length}` : "–";
-  // moments: the hero pick (only at the start, with reasons), fights with the matchup, lines that would
-  // have changed a lost fight, minion order, risky levels. Card averages are context (cardNotesHtml).
-  const heroM = hp && hp.clear ? [{kind:"hero", round:0, you:g.hero, you_val:hp.picked_avg, better:hp.best, better_val:hp.best_avg, diff:hp.loss,
-     why: hp.why||[], calc:`Average placement at your MMR (top ${c.bracket}%). Chance alone could explain up to ${hp.noise} places.`}] : [];
-  const picks = (c.picks||[]).filter(p=>p.clear).map(p=>({kind:"pick", pick_kind:p.kind, round:p.round, you:p.picked, you_val:p.picked_avg,
-     better:p.best, better_val:p.best_avg, diff:p.loss, picked_fit:p.picked_fit, best_fit:p.best_fit,
-     calc:`Average placement at your MMR when taken on round ${p.round}: ${nm(p.picked)} ${p.picked_avg} (${(p.picked_n||0).toLocaleString()} games), ${nm(p.best)} ${p.best_avg} (${(p.best_n||0).toLocaleString()} games); chance alone could explain up to ${p.noise}.`}));
-  const moments = [...heroM, ...(c.decisions||[])].sort((a,b)=>a.round-b.round);
-  return `<div class="card"><h3>Coach</h3>
-    <div class="verdicts">
-      <div><span>Hero</span>${heroV||"–"}</div>
-      <div><span>Board vs same hero</span><b class="${col(sp.early)}">${pct(sp.early)}</b> early · <b class="${col(sp.mid)}">${pct(sp.mid)}</b> mid · <b class="${col(sp.late)}">${pct(sp.late)}</b> late</div>
-      <div><span>Tiers</span>T4 ${tr[4]?"R"+tr[4]:"–"} · T5 ${tr[5]?"R"+tr[5]:"–"} · T6 ${tr[6]?"R"+tr[6]:"–"}</div>
-      <div><span>Luck</span>${luck}</div>
-    </div>
-    ${strengthBars(c.strength)}
-    <h4 style="margin:14px 0 4px">Moments to review <span class="muted" style="font-weight:400">(${moments.length}; click one for details)</span></h4>
-    ${moments.length ? moments.map(d=>momentHtml(d,false)).join("") : `<div class="muted">Nothing stands out in this game.</div>`}
-    ${lobbyHtml(c.lobby, g)}
-    ${cardNotesHtml([...(c.card_notes||[]), ...picks], false)}
-  </div>`;
+    const ms = (byRound||{})[s.round] || [];
+    const flags = ms.map(d=>KIND_ICON[d.kind]||"•").join("");
+    return `<div class="bar${byRound?" click":""}" ${byRound?`onclick="openRound(${s.round})"`:""} title="Round ${s.round}: your board ${s.mine} stats vs ${s.meta??"?"} average on this hero (${pct(r)}). ${s.result}.${bb}${ms.length?" · "+ms.map(d=>d.headline||d.kind).join(" · "):""}">
+      <span class="fl">${flags}</span><span>${pct(r)}</span><div class="b" style="height:${h}px;background:${col}"></div><span class="r">R${s.round} ${res}${luck}</span></div>`;}).join("")}</div>
+    <div class="muted" style="font-size:11.5px;margin-top:2px">Your board ÷ same-hero average at each fight · ⚠ a better line · ⇅ better order · ▲ risky level · 📘 playbook · ⚔ costly fight · 🎲 lost while favoured · 🍀 won as underdog</div>`;
 }
 function lobbyHtml(fights, g){
   // every opponent you fought: their board vs the average for their hero that round
@@ -519,20 +586,28 @@ function trendHtml(r){
 }
 async function loadImprove(){
   const r = await api("/api/improve"); Object.assign(NAMES, r.names||{});
-  const stats = [["Games analysed", r.games],["Avg place", r.avg_placement],["Your MMR", r.mmr??"?"],["Compared with", `top ${r.bracket}%`]];
-  const top = r.decision_summary[0];
+  const top = r.decision_summary[0], rest = r.decision_summary.slice(1);
+  const trendWord = s => s.before==null || s.last5==null ? "" : s.last5 < s.before ? `<span class="good">improving</span>` : s.last5 > s.before ? `<span class="bad">getting worse</span>` : `<span class="muted">no change</span>`;
+  const series = s => { const mx = Math.max(1, ...s.series.map(x=>x.count));
+    return `<div class="bars" style="height:70px">${s.series.map(x=>`<div class="bar click" onclick="openGame('${esc(x.file)}')" title="${esc((x.start||"").slice(0,16))}: ${x.count}× · place ${x.placement}">
+      <div class="b" style="height:${x.count?Math.max(6,56*x.count/mx):3}px;background:${x.count?"var(--bad)":"var(--line)"}"></div><span class="r">${x.placement}</span></div>`).join("")}</div>`; };
   $("#improveBody").innerHTML = `
-    <div class="grid" style="margin-bottom:14px">${stats.map(([k,v])=>`<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("")}</div>
-    ${top?`<div class="card focus"><h3>What to work on (last ${r.recent_games} games)</h3>
-      ${r.decision_summary.map(s=>`<div class="row"><b style="min-width:42px">${s.count}×</b>${esc(s.label)} <span class="muted">(${s.per_game} per game)</span></div>`).join("")}
-      <div class="muted" style="margin-top:6px;font-size:12px">Ordered by total size: simulated win % for counters and minion order, HP lost × how far behind for fights, places for heroes.</div></div>`:""}
-    <div class="card"><h3>Decisions to learn from: biggest first</h3>
-      ${r.decisions.map(d=>momentHtml(d,true)).join("") || '<span class="muted">Nothing stands out in your recent games.</span>'}
-      <div class="muted" style="font-size:12px;margin-top:6px">Counters and minion orders are simulated on the real fight, only for fights the simulator reproduces (checked against Bob's Buddy), and only with minions that were in your shop when the turn ended. "Highroller" = their board was at least 1.5× the average for their hero on that round. Hero numbers are average placements at your MMR from ${(r.meta_games||0).toLocaleString()} games, shown with the reasons and only when the difference is beyond chance.</div>
+    ${top?`<div class="card focus"><h3>Your focus <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· last ${r.recent_games>1?r.recent_games+" games":"game"}${r.mmr?` · MMR ${r.mmr} (compared with the top ${r.bracket}%)`:""}</span></h3>
+      <div class="big" style="font-size:19px">${esc(top.habit || top.label)}</div>
+      <div class="muted" style="margin-bottom:6px">${esc(top.label)} · ${top.count}× in ${r.recent_games} game${r.recent_games>1?"s":""}${top.series.length>=6?` · last 5 games ${top.last5} per game vs ${top.before} before: ${trendWord(top)}`:""}</div>
+      ${top.series.length>=6 ? series(top) + `<div class="muted" style="font-size:11.5px">Each bar is one game, oldest left; the height is how often it happened; the number is your placement. Click to open the game.</div>`
+        : `<div class="muted" style="font-size:12px">After 6 games you'll see here whether this is getting better.</div>`}
+      ${top.example?`<div style="margin-top:8px"><div class="muted" style="font-size:12px">BIGGEST EXAMPLE</div>${momentHtml(top.example, true)}</div>`:""}</div>`
+      : `<div class="card focus"><h3>Your focus</h3><div class="big">Nothing stands out in your recent games.</div></div>`}
+    ${rest.length?`<div class="card"><h3>Other habits</h3>${rest.map(s=>`<div class="hab"><b>${s.count}×</b><span>${esc(s.label)}<div class="muted" style="font-size:12px">${esc(s.habit||"")}</div></span><span class="muted" style="font-size:12px;text-align:right">${s.per_game}/game<br>${s.series.length>=6?trendWord(s):""}</span></div>`).join("")}</div>`:""}
+    <div class="card"><h3>Decisions to learn from <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· concrete lines first, then habits, then costly fights</span></h3>
+      ${r.decisions.slice(0, 15).map(d=>momentHtml(d,true)).join("") || '<span class="muted">Nothing stands out in your recent games.</span>'}
+      <div class="muted" style="font-size:12px;margin-top:6px">Counters and minion orders are simulated on the real fight (pts = win % + half the ties), only for fights the simulator reproduces, and only with minions that were in your shop when the turn ended. "Highroller" = their board was at least 1.5× the average for their hero. Hero numbers are average placements at your MMR from ${(r.meta_games||0).toLocaleString()} games, shown only when the difference is beyond chance.</div>
       ${cardNotesHtml(r.card_notes, true)}</div>
-    ${trendHtml(r)}
-    <div class="card"><h3>Your stats compared (context, not advice)</h3>${statsTableHtml(r.stats)}
-      <div class="muted" style="font-size:12px;margin-top:6px">Medians. Top-4 vs 5th–8th shows what differs between your good and bad games; it doesn't say why (e.g. leveling late can be the right call at low HP).</div></div>`;
+    <details class="card"><summary><b>Context: your stats and board-strength trend</b> <span class="muted">(numbers, not advice)</span></summary>
+      ${trendHtml(r)}
+      ${statsTableHtml(r.stats)}
+      <div class="muted" style="font-size:12px;margin-top:6px">Medians. Top-4 vs 5th–8th shows what differs between your good and bad games; it doesn't say why (e.g. leveling late can be the right call at low HP). Average place ${r.avg_placement}.</div></details>`;
 }
 
 // ---------- health
@@ -577,14 +652,18 @@ function showStrength(d){
   $("#liveStrength").innerHTML = `<div class="stat"><div class="k">Board vs same hero (R${d.round})${focus}</div><div class="v" style="color:${col}">${Math.round(r*100)}%</div></div>`;
 }
 function showSummary(d){
-  const s = d.strength||{}; const p = v => v==null?"–":Math.round(v*100)+"%";
+  // between games: one lesson and one habit, nothing else (the full review is one click away)
   const mmr = d.mmr&&d.mmr_before ? ` · MMR ${d.mmr_before} → ${d.mmr}` : "";
-  const hero = d.hero_loss==null ? "" : d.hero_loss<=0 ? "best hero offered ✓" : `hero ${d.hero_loss} worse than ${nm(d.hero_best)}`;
-  $("#liveAdvice").innerHTML = `<div class="card focus"><h3>Game over: coach summary</h3>
-    <div class="big" style="font-size:20px">${placeTag(d.placement)} ${nm(d.hero)}${mmr}</div>
-    <div class="row"><span class="mini">board early ${p(s.early)}</span><span class="mini">mid ${p(s.mid)} (your focus)</span><span class="mini">late ${p(s.late)}</span>
-      <span class="mini">${hero}</span><span class="mini">${d.weak_picks} of ${d.picks} picks clearly weaker than an option</span></div>
-    ${d.file?`<div style="margin-top:6px"><button class="btn small" onclick="openGame('${esc(d.file)}')">Open the full game →</button></div>`:`<div class="muted" style="margin-top:6px">(test replay, not saved)</div>`}</div>`;
+  const l = d.lesson;
+  const body = l ? `<div class="big" style="font-size:17px;line-height:1.6">${esc(l.headline)}</div>
+      ${l.habit?`<div class="habitline">Next game: ${esc(l.habit)}</div>`:""}
+      ${(d.also||[]).length?`<div class="muted" style="font-size:12px;margin-top:10px">ALSO</div>${d.also.map(a=>`<div style="font-size:13px;margin:2px 0">${esc(a.headline)}</div>`).join("")}`:""}`
+    : `<div class="big">Nothing big to fix this game.</div>`;
+  $("#livePost").innerHTML = `<div class="card focus"><h3>Game over · ${placeTag(d.placement)} ${nm(d.hero)}${esc(mmr)}
+      ${l?`<span class="cost" style="float:right;font-size:16px">${esc(l.impact||"")}</span>`:""}</h3>
+    <div class="muted" style="font-size:12px;margin-bottom:4px">THE ONE THING TO TAKE INTO YOUR NEXT GAME</div>${body}
+    ${!d.simulated && d.file?`<div class="muted" style="font-size:12px;margin-top:8px">Checking this game's fights with the simulator… this may change in a few seconds.</div>`:""}
+    ${d.file?`<div style="margin-top:8px"><button class="btn small" onclick="openGame('${esc(d.file)}')">Open the full game →</button></div>`:`<div class="muted" style="margin-top:6px">(test replay, not saved)</div>`}</div>`;
 }
 
 // ---------- user problem reports
@@ -623,7 +702,7 @@ on("status", d => {
   $("#liveStatus").innerHTML = d.log ? (d.in_game ? `In a game: round ${d.round}` : "Watching Hearthstone, no game running") + ` <span class="muted">· ${esc(d.log)}</span>` : esc(d.message||"No log");
   if (d.snapshot){ live.turns = d.snapshot.turns||[]; live.combats = {}; (d.snapshot.combats||[]).forEach(c=>live.combats[c.round]=c); liveStats(d.snapshot); renderLive(); }
 });
-on("game_start", d => { live.turns=[]; live.combats={}; $("#liveAdvice").innerHTML=""; $("#liveStrength").innerHTML=""; $("#checkTag").textContent="checks: -"; $("#checkTag").className="tag"; $("#liveDot").classList.add("on");
+on("game_start", d => { live.turns=[]; live.combats={}; $("#liveAdvice").innerHTML=""; $("#livePost").innerHTML=""; $("#liveStrength").innerHTML=""; $("#checkTag").textContent="checks: -"; $("#checkTag").className="tag"; $("#liveDot").classList.add("on");
   $("#liveStatus").innerHTML = `Game started · patch ${esc(d.patch)} <span class="muted">(${esc(d.patch_name)})</span>`; renderLive(); });
 on("offers", d => showOffers(d));
 on("summary", d => showSummary(d));
@@ -647,7 +726,7 @@ on("next_opponent", d => {
 on("next_opponent_odds", d => { const o = $("#liveOdds"); if (o) o.innerHTML = `⚔ Your board now vs that board (simulated): <b>${Math.round(d.win)}%</b> win · ${Math.round(d.tie)}% tie · ${Math.round(d.loss)}% loss. They've grown since round ${d.seen_round}, so treat it as a floor for them.`; });
 on("checks", d => { const t=$("#checkTag"); t.textContent = `✓ ${d.ok} checks` + (d.failed?` · ✗ ${d.failed} failed`:""); t.className = "tag " + (d.failed?"err":""); });
 on("check_failed", d => showError(`Self-check failed in round ${d.round}: ${d.action} recorded but "${d.expected}" did not happen`, ()=>reportFor("error="+d.error_id)));
-on("game_end", d => { $("#liveDot").classList.remove("on"); $("#liveStatus").innerHTML = `Game over: ${placeTag(d.placement)} ${nm(d.hero)} · saved`; });
+on("game_end", d => { $("#liveDot").classList.remove("on"); $("#liveStatus").innerHTML = `Game over: ${placeTag(d.placement)} ${nm(d.hero)} · ${d.test ? "test replay, not saved" : "saved"}`; });
 on("parse_error", d => showError(`Parse error at log line ${d.line_no}: ${d.error}`, async()=>{ const h = await api("/api/health"); return reportFor("error="+h.errors[0].id); }));
 on("error", d => showError(`Live watcher error: ${d.error}`, ()=>reportFor("error="+d.id)));
 es.onerror = () => { $("#liveStatus").textContent = "Disconnected from bg-coach (is it still running?)"; $("#liveDot").classList.remove("on"); };

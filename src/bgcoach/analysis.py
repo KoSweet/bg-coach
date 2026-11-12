@@ -379,6 +379,8 @@ def stats_table(rows: list[dict]) -> list[dict]:
 
 def coach_report(games: list[dict], recent: int = 20) -> dict:
     """Decisions to learn from (concrete, with maths) first; your stats as context second."""
+    from . import lessons
+    from . import version as V
     from .decisions import all_decisions, card_notes
     base = improve_report(games)
     bracket = base["bracket"]
@@ -390,14 +392,9 @@ def coach_report(games: list[dict], recent: int = 20) -> dict:
         tag = {"file": r["file"], "start": r["start"], "hero": r["hero"], "placement": r["placement"]}
         for d in all_decisions(r["g"], bracket, r["a"]["strength"], r["a"]["lobby"]):
             decisions.append({**d, **tag})
-        hp = r["a"].get("hero_pick")
-        if hp and hp.get("clear"):
-            decisions.append({"kind": "hero", "round": 0, **tag, "you": r["hero"], "you_val": hp["picked_avg"],
-                              "better": hp["best"], "better_val": hp["best_avg"], "diff": hp["loss"],
-                              "why": hp.get("why") or [],
-                              "calc": f"At your MMR: your hero averages {hp['picked_avg']}, the best offered "
-                                      f"averages {hp['best_avg']}: {hp['loss']:.2f} places better (chance alone "
-                                      f"could explain up to {hp['noise']})."})
+        hm = lessons.hero_moment(r["a"], r["hero"])
+        if hm:
+            decisions.append({**hm, **tag})
         # card averages: context, not moments (they can't see your situation)
         notes += [{**d, **tag} for d in card_notes(r["g"], bracket)]
         notes += [{"kind": "pick", "round": p["round"], **tag, "you": p["picked"], "you_val": p["picked_avg"],
@@ -414,7 +411,9 @@ def coach_report(games: list[dict], recent: int = 20) -> dict:
         if d["kind"] in ("counter", "position"):
             return (d.get("gain") or 0) / 100
         return d.get("diff") or 0
-    decisions.sort(key=weight, reverse=True)
+    name = V.card_db(V.current_bg_meta_build()).name
+    decisions = lessons.annotate(decisions, name)  # by kind, then size: the same order as the game page
+    notes = lessons.annotate(notes, name)
     notes.sort(key=lambda d: -(d.get("diff") or 0))
 
     # which kind of decision shows up most in your recent games
@@ -425,13 +424,22 @@ def coach_report(games: list[dict], recent: int = 20) -> dict:
     from .playbook import RULES
     kinds.update({f"rule:{rid}": f"Pro playbook: {title.lower()}" for rid, (title, _, _) in RULES.items()})
     n_recent = len(rows[-recent:]) or 1
+    key = lambda d: f"rule:{d.get('rule')}" if d["kind"] == "rule" else d["kind"]
     summary = []
     for k, label in kinds.items():
-        ds = [d for d in decisions if (f"rule:{d.get('rule')}" if d["kind"] == "rule" else d["kind"]) == k]
+        ds = [d for d in decisions if key(d) == k]
         if ds:
+            # how often it happened in each recent game, oldest first: is the habit getting better?
+            series = [{"file": r["file"], "start": r["start"], "placement": r["placement"],
+                       "count": sum(1 for d in ds if d["file"] == r["file"])} for r in rows[-recent:]]
+            last, before = series[-5:], series[:-5]
             summary.append({"kind": k, "label": label, "count": len(ds), "per_game": round(len(ds) / n_recent, 2),
-                            "total": round(sum(weight(d) for d in ds), 2)})
-    summary.sort(key=lambda x: -x["total"])
+                            "total": round(sum(weight(d) for d in ds), 2), "habit": ds[0].get("habit"),
+                            "example": ds[0], "series": series,
+                            "last5": round(sum(s["count"] for s in last) / len(last), 2) if last else None,
+                            "before": round(sum(s["count"] for s in before) / len(before), 2) if before else None})
+    # focus = the costliest habit you can practise; lost fights are symptoms, listed after
+    summary.sort(key=lambda x: (x["kind"] == "fight", -x["total"]))
     return {**{k: base[k] for k in ("games", "mmr", "bracket", "bracket_mmr", "meta_updated", "meta_games",
                                     "avg_placement", "trend")},
             "recent_games": n_recent, "decisions": decisions[:30], "decision_summary": summary, "card_notes": notes[:15],

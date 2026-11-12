@@ -128,3 +128,15 @@ def test_gold_left_unspent():
     assert len(r) == 1 and "round 5 with 3 gold" in r[0]["what"] and "round 8" not in r[0]["what"]
     ts[4]["gold_end"] = 1          # 1 gold is too small to call out
     assert "gold_unspent" not in rules(game(ts))
+
+
+def test_freeze_pressed_twice_is_an_unfreeze():
+    # the button toggles: two presses leave the shop unfrozen, and the next shop is new
+    t4 = turn(4, [{"type": "FREEZE", "gold": 0}, {"type": "FREEZE", "gold": 0}],
+              end_shop=[{"card_id": "A"}, {"card_id": "B"}])
+    t5 = turn(5, [{"type": "BUY", "target": "C", "gold": 7}], shop=[{"card_id": "C"}, {"card_id": "D"}])
+    assert "freeze_unused" not in rules(game([t4, t5]))
+    # one press, and the next shop really holds the frozen cards: a real freeze
+    t4["actions"] = [{"type": "FREEZE", "gold": 0}]
+    t5["shop"] = [{"card_id": "A"}, {"card_id": "B"}, {"card_id": "E"}]
+    assert "freeze_unused" in rules(game([t4, t5]))

@@ -12,7 +12,7 @@ behind them.
 
 It is not a bot and it doesn't play for you. It helps you see your own games more clearly.
 
-![A game's coach section: board strength each round, and moments to review](docs/images/game.png)
+![A game page: the one thing to take into your next game, the game's story, and every round in one line](docs/images/game.png)
 
 ## What you get
 
@@ -23,8 +23,13 @@ and when two options are too close to call. During the shop phase it shows **who
 their tier, health and triples, the last board you saw from them (and whether that was a
 highroll), and, with the simulator, your current board's odds against it.
 
-**After each game.** A round-by-round timeline (shop, board, every action, every fight), plus a
-coach section that thinks about the lobby, not just your cards:
+**After each game.** Between games you see one thing: the most important lesson of that game and
+a habit to try in the next one (in the app and on the overlay). The game page starts with the same
+lesson, then the game's story (your board strength each round; click a round to open it), then
+every round in one line with its lessons underneath. The full shop, board and fight of a round, the
+lobby and the card numbers are one click away. Lessons are ranked by kind, then by size: a concrete
+line you could have played comes before a general habit, and a lost fight comes last. The coaching
+looks at the lobby, not just your cards:
 - **Counter lines** for fights you lost: what you could have done that turn with a minion still in
   your shop. For example: *"skip the 5-gold level-up and buy Tarecgosa: 0% → 42% win, simulated
   (risky: a tier lower next turn)"*, or *"instead of Southsea Busker, buy this venomous minion"*.
@@ -40,8 +45,9 @@ coach section that thinks about the lobby, not just your cards:
 - **Card numbers** (buys and picks against the averages at your MMR) as background context only,
   because averages can't see your situation.
 
-**Across games.** What to work on first (the habits that cost you the most), and your stats
-compared with your own good and bad games and with players at your MMR, as context rather than rules.
+**Across games.** Your focus: the one habit that costs you the most, whether it's getting better
+game by game, and its biggest example. Then your other habits, the decisions to learn from, and
+your stats compared with your good and bad games and with players at your MMR, as context rather than rules.
 
 | Live, while playing (test replay) | Across games |
 |---|---|

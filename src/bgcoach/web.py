@@ -170,7 +170,8 @@ class Hub:
                 q.put((kind, data))
 
     def _summary(self, file: str | None):
-        """Short coach verdict right after a game ends (test mode: the unsaved game)."""
+        """Right after a game: the one thing to take into the next game (test mode: the unsaved game).
+        Sent twice: at once, then again when the simulator has checked this game's fights."""
         try:
             if file:
                 g = next((g for g in pipeline.load_games() if g["file"] == file), None)
@@ -178,23 +179,28 @@ class Hub:
                 g = getattr(self.watcher, "last_test_game", None)
             if g is None:
                 return
-            try:  # simulate this game's fights in the background (cached for the game page)
-                from . import whatif
-                threading.Thread(target=whatif.run, args=([g], live_bracket()),
-                                 kwargs={"progress": lambda m: None}, daemon=True).start()
-            except Exception:
-                pass
-            a = analysis.game_analysis(g, live_bracket())
-            hp = a.get("hero_pick") or {}
-            bad = [p for p in a.get("picks") or [] if p["loss"] >= 0.25]
-            self.emit("summary", {
-                "file": file, "placement": g.get("placement"), "hero": g.get("hero"),
-                "mmr": (g.get("hdt") or {}).get("rating_after"), "mmr_before": (g.get("hdt") or {}).get("rating"),
-                "strength": a["strength_phase"], "hero_loss": hp.get("loss"), "hero_best": hp.get("best"),
-                "weak_picks": len(bad), "picks": len(a.get("picks") or []),
-                "tier_round": a.get("tier_round"), "bracket": a.get("bracket")})
+            self.emit("summary", self._lesson_summary(g, file, simulated=False))
+            from . import combat_sim, whatif
+            if file and combat_sim.available():
+                whatif.run([g], live_bracket(), progress=lambda m: None)
+                self.emit("summary", self._lesson_summary(g, file, simulated=True))
         except Exception as e:
             health.record_error("summary", e, file=file)
+
+    @staticmethod
+    def _lesson_summary(g: dict, file: str | None, simulated: bool) -> dict:
+        from . import lessons
+        b = live_bracket()
+        a = analysis.game_analysis(g, b)
+        db = V.card_db(g.get("build") or V.current_bg_meta_build())
+        ranked = lessons.for_game(g, a, b, db)
+        keep = ("kind", "round", "headline", "habit", "impact", "buy", "better", "opp", "you", "line_kind", "rule")
+        return {"file": file, "placement": g.get("placement"), "hero": g.get("hero"),
+                "mmr": (g.get("hdt") or {}).get("rating_after"), "mmr_before": (g.get("hdt") or {}).get("rating"),
+                "lesson": {k: ranked[0].get(k) for k in keep} if ranked else None,
+                "also": [{k: d.get(k) for k in keep} for d in ranked[1:3]],
+                "moments": len(ranked), "simulated": simulated,
+                "strength": a["strength_phase"], "tier_round": a.get("tier_round")}
 
     def subscribe(self) -> queue.Queue:
         q: queue.Queue = queue.Queue()
@@ -482,11 +488,12 @@ class Handler(BaseHTTPRequestHandler):
             g["names"] = pipeline.card_names(g, db)
             g["screenshots"] = screenshots.for_game(g)
             try:
-                from .decisions import all_decisions, card_notes
+                from . import lessons
+                from .decisions import card_notes
                 b = my_bracket()
                 g["coach"] = analysis.game_analysis(g, b)
-                g["coach"]["decisions"] = all_decisions(g, b, g["coach"]["strength"], g["coach"]["lobby"])
-                g["coach"]["card_notes"] = card_notes(g, b)
+                g["coach"]["decisions"] = lessons.for_game(g, g["coach"], b, db)  # ranked: [0] = the one thing
+                g["coach"]["card_notes"] = lessons.annotate(card_notes(g, b), db.name)
                 g["names"].update(pipeline.card_names(g["coach"], db))
             except Exception as e:  # meta offline etc. must not break the page
                 g["coach_error"] = health.record_error("coach", e, game=name)["error"]

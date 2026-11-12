@@ -129,6 +129,9 @@ class Overlay:
         # who you fight next (as the game announces it) + the last board you saw them with
         self.nextopp = tk.Label(outer, text="", fg=FG, bg=BG, font=(FONT, 9), wraplength=300, justify="left")
         self.nextopp.pack(anchor="w")
+        # after a game: the one thing to take into the next game (packed when the summary arrives)
+        self.lesson = tk.Label(outer, text="", fg=FG, bg="#1f1a10", font=(FONT, 9), wraplength=300,
+                               justify="left", anchor="w", padx=6, pady=4)
         self.advice = tk.Frame(outer, bg="#1f1a10", padx=4, pady=3)  # shown only while you choose
         self.advice_rows: list[tk.Widget] = []
         self.offers: dict | None = None
@@ -395,6 +398,11 @@ class Overlay:
         elif kind == "game_start":
             self.in_game, self.ok, self.failed = True, 0, 0
             self._clear_feed()
+            if self.lesson.winfo_ismapped():  # last game's lesson: gone once the new game starts
+                self.lesson.pack_forget()
+                if self.auto_expanded:
+                    self.auto_expanded = False
+                    self._shrink()
             self.title.config(text=f"bg-coach · recording · patch {d.get('patch')}")
             self.stats.config(text="Hero selection")
         elif kind == "round":
@@ -414,17 +422,16 @@ class Overlay:
         elif kind == "offers":
             self.offers = d
             self._show_offers(d)
-        elif kind == "summary":
-            s_ = d.get("strength") or {}
-            pct = lambda v: f"{v:.0%}" if v is not None else "?"
-            self._add_row("GAME", AMBER, f"#{d.get('placement')} · board {pct(s_.get('mid'))} mid · {pct(s_.get('late'))} late")
-            hl = d.get("hero_loss")
-            if hl is not None:
-                self._add_row("HERO", GREEN if hl < 0.3 else RED,
-                              "best offered ✓" if hl <= 0.05 else f"−{hl} vs {n(d.get('hero_best'))}",
-                              card_id=d.get("hero"))
-            self._add_row("PICKS", GREEN if not d.get("weak_picks") else AMBER,
-                          f"{d.get('weak_picks')}/{d.get('picks')} weaker · details in app")
+        elif kind == "summary":  # between games: the one thing to take into the next game
+            les = d.get("lesson")
+            text = (f"#{d.get('placement')} · THE ONE THING\n{les['headline']}\nNext game: {les.get('habit') or ''}"
+                    if les else f"#{d.get('placement')} · nothing big to fix this game")
+            self.lesson.config(text=text.strip())
+            if not self.lesson.winfo_ismapped():
+                self.lesson.pack(fill="x", pady=(4, 0), before=self.feed)
+            if self.compact:
+                self.auto_expanded = True
+                self._expand()
         elif kind == "action":
             self._show_strength(d)
             t = d["type"]

@@ -54,6 +54,7 @@ flowchart LR
 | `decisions.py` | Moments to review: hero, fights (with the matchup), counter lines, minion order, risky levels; card numbers as context |
 | `lobby.py` | The lobby as you saw it: opponent boards vs their hero's average (highrollers), leaderboard each round |
 | `playbook.py` | Principles from top players' guides, checked against each game (see docs/PLAYBOOK.md) |
+| `lessons.py` | Ranks a game's moments into lessons (the one thing + a habit), shared by the game page, after-game card, overlay and Improve |
 | `synergy.py` | How well a card fits the build at that moment |
 | `combat_sim.py`, `whatif.py`, `simcheck.py` | Combat simulator bridge, cached what-ifs, validation vs Bob's Buddy |
 | `bobsbuddy.py` | Bob's Buddy win/tie/loss odds per fight, read from HDT's log |

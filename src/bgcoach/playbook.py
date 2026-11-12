@@ -62,6 +62,18 @@ def _rule(rule_id: str, rnd: int, what: str, **extra) -> dict:
             "source": name, "url": url, "diff": extra.pop("weight", 0.2), **extra}
 
 
+def frozen_at_end(t: dict, nxt: dict | None) -> bool:
+    """Was the shop frozen when the turn ended? The freeze button toggles (a second press unfreezes),
+    so count the presses; when the next round's starting shop is known, it must still hold the cards."""
+    if sum(1 for a in t.get("actions") or [] if a["type"] == "FREEZE") % 2 == 0:
+        return False
+    end = [s.get("card_id") for s in t.get("end_shop") or []]
+    start = [s.get("card_id") for s in (nxt or {}).get("shop") or []]
+    if end and start:
+        return all(start.count(c) >= end.count(c) for c in set(end))
+    return True
+
+
 def _paid_refreshes(t: dict) -> int:
     """Refreshes that cost gold (free ones, e.g. from a hero power, don't count)."""
     acts = t.get("actions") or []
@@ -135,7 +147,7 @@ def _short_rolls(turns: dict) -> list[dict]:
             if after is None or after >= a["gold"] or after >= 3 or a["gold"] < 3:
                 continue  # free roll, still able to buy, or spare gold that would be lost anyway
             rest = acts[i + 1:]
-            if not any(x["type"] in ("BUY", "REFRESH") for x in rest) and any(x["type"] == "FREEZE" for x in rest):
+            if not any(x["type"] in ("BUY", "REFRESH") for x in rest) and frozen_at_end(t, turns.get(r + 1)):
                 out.append(_rule("roll_short", r, f"Rolled with {a['gold']} gold (enough to buy), leaving {after}, then "
                                                   f"froze what came up instead of buying.", weight=0.05))
                 break
@@ -184,7 +196,7 @@ def check(g: dict, db=None) -> list[dict]:
                 out.append(_rule("triple_before_level", r,
                                  f"Played the triple reward on tier {tier}, then levelled the same turn: it discovered "
                                  f"from tier {tier + 1} instead of tier {tier + 2}.", weight=0.25))
-        if any(a["type"] == "FREEZE" for a in acts) and r + 1 in turns:
+        if r + 1 in turns and frozen_at_end(t, turns[r + 1]):
             frozen = {s.get("card_id") for s in t.get("end_shop") or []}
             nxt = turns[r + 1].get("actions") or []
             bought = set()
