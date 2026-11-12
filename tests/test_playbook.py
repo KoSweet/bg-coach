@@ -130,6 +130,13 @@ def test_gold_left_unspent():
     assert "gold_unspent" not in rules(game(ts))
 
 
+def test_a_short_roll_is_not_also_told_as_unspent_gold():
+    # rolled with 3, froze what came up, ended with 2: one cause (the roll), so one lesson, not two that disagree
+    short = turn(6, [{"type": "REFRESH", "gold": 3}, {"type": "FREEZE", "gold": 2}], gold_end=2)
+    found = rules(game([short, turn(7, gold_end=0)]))
+    assert "roll_short" in found and "gold_unspent" not in found
+
+
 def test_freeze_pressed_twice_is_an_unfreeze():
     # the button toggles: two presses leave the shop unfrozen, and the next shop is new
     t4 = turn(4, [{"type": "FREEZE", "gold": 0}, {"type": "FREEZE", "gold": 0}],

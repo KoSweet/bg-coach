@@ -1,4 +1,5 @@
-"""Simulated "what if" analysis per game (rounds 1-10, where the simulator matches Bob's Buddy).
+"""Simulated "what if" analysis per game: every round the simulator reproduces (rounds 1-10 checked
+against Bob's Buddy or the real result, rounds 11+ only when Bob's Buddy confirms the fight).
 
 For each saved game:
   - fight: your recorded fight, simulated (win/tie/loss %)
@@ -9,6 +10,8 @@ For each saved game:
   - counter ("scam") lines: for fights you lost, what your end-of-turn shop and gold allowed: buy a
     minion still in the shop, selling your weakest minion(s) if you needed the gold or the space.
     Reported when it clearly changes the fight; "risky" when it lowers your total stats.
+  - keep lines: a minion you sold that turn, kept on the board (in place of your weakest one if the
+    board was full): the transition turn that cost a fight, scam or big stats alike.
 
 Every what-if is only used for fights the simulator reproduces (trust check against Bob's Buddy or
 the real result). Results are cached in data/sim/<game file>.json.  `bgcoach whatif` fills the
@@ -25,9 +28,8 @@ from .decisions import MINION_COST, buy_decisions
 from .lobby import stats as board_stats
 
 SIM_DIR = pipeline.DATA / "sim"
-VERSION = 3
-MAX_ROUND = 10          # validated range (see `bgcoach sim-check`)
-COUNTER_MAX_ROUND = 12  # counter lines up to here; rounds 11+ only with Bob's Buddy confirming the fight
+VERSION = 4
+MAX_ROUND = 10  # trusted on its own up to here (see `bgcoach sim-check`); rounds 11+ need Bob's Buddy to agree
 POS_MIN_GAIN = 10.0     # percentage points
 COUNTER_MIN_GAIN = 15.0  # points of (win + half the ties)
 QUICK, FULL = 300, 1500
@@ -99,7 +101,8 @@ def _counter_variants(c: dict, t: dict, db) -> list[dict]:
       - "instead": skip one minion you bought this turn, buy this one instead
       - "skip_level": don't tavern up this turn, buy this one (risky: you stay a tier lower)
       - "spare": your unspent gold, selling your weakest minion if you were 1–2 gold short
-    The new minion goes in front or at the back (both are simulated)."""
+      - "keep": a minion you sold this turn, still on the board (in place of your weakest if full)
+    The new minion goes in front or at the back (both are simulated); a kept one also where it stood."""
     board = c.get("my_board") or []
     gold = t.get("gold_end") or 0
     shop = [s for s in t.get("end_shop") or [] if db.get(s.get("card_id")).get("type") == "MINION"]
@@ -118,7 +121,7 @@ def _counter_variants(c: dict, t: dict, db) -> list[dict]:
     elif gold + 1 >= MINION_COST and weakest is not None:
         lines.append(("spare", None, [weakest]))
 
-    out = []
+    out = _keep_variants(board, t, weakest)
     for s in shop:
         new = {"card_id": s["card_id"], "atk": s.get("atk") or 0, "hp": s.get("hp") or 1,
                "kw": s.get("kw") if s.get("kw") is not None else combat_sim.base_keywords(s["card_id"])}
@@ -131,10 +134,33 @@ def _counter_variants(c: dict, t: dict, db) -> list[dict]:
     return out
 
 
+def _keep_variants(board: list[dict], t: dict, weakest: int | None) -> list[dict]:
+    """Minions sold this turn that didn't come back, kept on the board with the stats they were sold at."""
+    on_board = {m["card_id"] for m in board}
+    before = {m["card_id"]: m for m in t.get("board") or []}  # start of the turn: keywords and slot
+    out, seen = [], set()
+    for a in t.get("actions") or []:
+        cid, ah = a.get("target"), a.get("target_atk_hp")
+        if a["type"] != "SELL" or not cid or not ah or cid in on_board or cid in seen:
+            continue
+        seen.add(cid)
+        full = len(board) >= 7
+        if full and (weakest is None or sum(ah) <= board_stats([board[weakest]])):
+            continue  # not bigger than what it would replace
+        was = before.get(cid) or {}
+        kept_m = {"card_id": cid, "atk": ah[0], "hp": ah[1],
+                  "kw": was.get("kw") if was.get("kw") is not None else combat_sim.base_keywords(cid)}
+        kept = [m for i, m in enumerate(board) if not (full and i == weakest)]
+        sold = [board[weakest]] if full else []
+        for pos in sorted({0, len(kept), min(max((was.get("pos") or 1) - 1, 0), len(kept))}):
+            out.append({"kind": "keep", "buy": kept_m, "undone": cid, "sold": sold, "pos": pos,
+                        "board": [*kept[:pos], kept_m, *kept[pos:]]})
+    return out
+
+
 def analyse(g: dict, bracket: int) -> dict:
     db = V.card_db(g.get("build") or V.current_bg_meta_build())
-    combats = {c["round"]: c for c in g.get("combats") or []
-               if c["round"] <= COUNTER_MAX_ROUND and c.get("my_board") and c.get("opp_board")}
+    combats = {c["round"]: c for c in g.get("combats") or [] if c.get("my_board") and c.get("opp_board")}
     hero = g.get("hero")
     battles, meta = {}, {}
 
@@ -144,7 +170,7 @@ def analyse(g: dict, bracket: int) -> dict:
     # buy what-ifs
     for d in buy_decisions(g, bracket):
         c = combats.get(d["round"])
-        if not c or d["round"] > MAX_ROUND:
+        if not c:
             continue
         idx = next((i for i, m in enumerate(c["my_board"]) if m["card_id"] == d["you"]), None)
         alt = _alt_minion(d["better"], db)
@@ -202,7 +228,7 @@ def analyse(g: dict, bracket: int) -> dict:
     screen, pos_meta = {}, {}
     for rnd, c in combats.items():
         r = first.get(f"f{rnd}") or {}
-        if rnd > MAX_ROUND or r.get("win") is None or len(c["my_board"]) < 2 or not trusted.get(rnd, {}).get("ok"):
+        if r.get("win") is None or len(c["my_board"]) < 2 or not trusted.get(rnd, {}).get("ok"):
             continue
         if c.get("result") != "LOSS" and r["win"] >= 50:
             continue

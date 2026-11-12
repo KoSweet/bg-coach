@@ -36,6 +36,18 @@ The point first, details on demand.
 - **Minion order** only against a board you had already seen (positioning with information), and only
   when it saves real HP; otherwise it was hindsight.
 - Lost fights get their own line only against a real highroller (2× the average for their hero).
+- **Scam and other keyword boards are judged by their fights, not their stat total.** A venomous /
+  divine-shield board at 30% of the stat average that keeps winning is not "behind"; when it does
+  lose, the lesson says so from its fight record. A turning point needs two lost fights in its
+  window (one loss is not a pattern), and a 1st place always opens with "You won".
+- **Transition turns:** selling your stat holders on the turn you cross below 15 HP (for triples, a
+  buy-play-sell engine, a new build) is its own turning point, with what they had fought with the
+  round before and whether it paid off afterwards.
+- **Keep lines (simulated):** "keep the minion you sold instead of selling it", back on the board with
+  the stats it was sold at, only when that fight cost you the 15-HP line.
+- **Every round is simulated**, not just 1–10/12: from round 11 a fight's what-ifs are used only when
+  Bob's Buddy agrees with the simulator on that fight (late fights are where most games are decided).
+- A short roll and unspent gold on the same turn are one lesson, not two that disagree.
 
 ### Fixed
 - The freeze button toggles: a second press unfreezes. "Froze the shop, bought none" counted

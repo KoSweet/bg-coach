@@ -425,7 +425,8 @@ class Overlay:
         elif kind == "summary":  # between games: the one thing to take into the next game
             les = d.get("lesson")
             if d.get("good_game"):  # a top-2 game without a turning point: no "mistake" headline
-                text = f"#{d.get('placement')} · Good game: no turning point to fix." + (
+                won = "You won!" if d.get("placement") == 1 else "Good game: no turning point to fix."
+                text = f"#{d.get('placement')} · {won}" + (
                     f"\nSmall thing: {les['headline']}" if les else "")
             elif les:
                 text = f"#{d.get('placement')} · THE ONE THING\n{les['headline']}\nNext game: {les.get('habit') or ''}"

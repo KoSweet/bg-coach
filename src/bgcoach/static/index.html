@@ -416,9 +416,9 @@ const KIND_ICON = {counter:"⚠", turning:"↘", position:"⇅", level:"▲", fi
 function oneThingHtml(ms, placement){
   // a top-2 game with no real turning point: say so first; the small things come after
   const real = ms.some(d => d.kind==="counter" || d.kind==="turning");
-  if (placement && placement <= 2 && ms.length && !real) return `<div class="card focus"><h3>Good game · ${placement===1?"you won":"2nd place"}</h3>
-    <div class="big">No turning point and no costly line to fix.</div>
-    <div class="muted" style="font-size:12px;margin:10px 0 2px">SMALL THINGS</div>
+  if (placement && (placement === 1 || (placement <= 2 && !real)) && ms.length) return `<div class="card focus"><h3>Good game · ${placement===1?"you won":"2nd place"}</h3>
+    <div class="big">${real ? "You won it. Worth a look, not a fix:" : "No turning point and no costly line to fix."}</div>
+    <div class="muted" style="font-size:12px;margin:10px 0 2px">${real ? "CLOSE CALLS AND SMALL THINGS" : "SMALL THINGS"}</div>
     ${ms.slice(0, 3).map(d => { const [l, ln] = momentParts(d);
       return `<div class="also" onclick="${d.round?`openRound(${d.round})`:`openDrawer('dr-all')`}"><span class="mo-r">${d.round?"R"+d.round:"Start"}</span><span class="mo-k">${esc(l)}</span><span class="mo-t">${ln}</span><span class="mo-x muted">${esc(d.impact||"")}</span></div>`; }).join("")}</div>`;
   if (!ms.length) return `<div class="card focus"><h3>The one thing</h3><div class="big">Nothing big to fix this game.</div>
@@ -509,7 +509,7 @@ function momentParts(d){
   if (d.kind==="counter"){
     if (d.board) det.push(`Board for that fight: ${(d.board||[]).map(icon).join("")}`);
     const risky = (d.risky||[]).length ? ` <span class="tag warn">risky</span>` : "";
-    const below = d.hp_after!=null ? ` <span class="muted">(you dropped to ${d.hp_after} HP)</span>` : "";
+    const below = d.hp_after!=null ? ` <span class="muted">(${d.hp_after<=0 ? "that fight knocked you out" : `you dropped to ${d.hp_after} HP`})</span>` : "";
     return ["Counter", `${esc(d.what)}${d.buy_kw&&d.buy_kw.length?` <span class="muted">(${esc(d.buy_kw.join(", "))})</span>`:""} ${icon(d.buy)} · loss chance <b>${Math.round(d.base.loss)}%</b> → ${num(Math.round(d.new.loss)+"%",true)}${below}${risky}`, d.impact||"", det];
   }
   if (d.kind==="turning"){
@@ -670,7 +670,7 @@ function showSummary(d){
   if (d.good_game) {
     const small = [l, ...(d.also||[])].filter(Boolean);
     $("#livePost").innerHTML = `<div class="card focus"><h3>Good game · ${placeTag(d.placement)} ${nm(d.hero)}${esc(mmr)}</h3>
-      <div class="big">No turning point and no costly line to fix.</div>
+      <div class="big">${d.placement===1 ? "You won." : "No turning point and no costly line to fix."}</div>
       ${small.length?`<div class="muted" style="font-size:12px;margin-top:8px">SMALL THINGS</div>${small.map(a=>`<div style="font-size:13px;margin:2px 0">${esc(a.headline)}</div>`).join("")}`:""}
       ${d.file?`<div style="margin-top:8px"><button class="btn small" onclick="openGame('${esc(d.file)}')">Open the full game →</button></div>`:""}</div>`;
     return;

@@ -65,9 +65,11 @@ The coaching is only as good as the record, so the record checks itself:
 - **Cross-checked against Hearthstone Deck Tracker.** `bgcoach check` re-parses every archived log
   and compares hero, placement and final board with HDT's own record:
   **33/33 games agree on all three** (author's archive, November 2026).
-- **The simulator is validated before use.** Compared with Bob's Buddy on real fights it agrees
-  within about 2 percentage points for rounds 1–5 and 10 points for rounds 6–10, so it is only used
-  up to round 10, and only for fights it reproduces.
+- **The simulator is validated before use, fight by fight.** Compared with Bob's Buddy on 129 real
+  fights it is off by about 5 percentage points on average in rounds 1–5, 10 in rounds 6–10 and 15
+  in rounds 11+ (where a few fights are far off). So every fight is checked before its what-ifs are
+  used: up to round 10 against Bob's Buddy or the real result, from round 11 only when Bob's Buddy
+  agrees within 15 points.
 
 How the log is read, and the coaching rules: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 

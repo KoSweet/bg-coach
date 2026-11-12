@@ -198,7 +198,83 @@ def level_decisions(g: dict, strength: list[dict]) -> list[dict]:
 LINE_HP = 15  # the damage cap: above it you survive any single loss before top 4
 
 
-def turning_point(g: dict, strength: list[dict], opponents: list[dict] | None = None) -> dict | None:
+def keyword_board(board: list[dict] | None) -> bool:
+    """A board that wins through keywords, not stats ("scam": venomous, poisonous, divine shields).
+    Its stat total says little about its strength, so it is never judged by it."""
+    kws = [set(m.get("kw") or []) for m in board or []]
+    venom = sum(1 for k in kws if k & {"VENOMOUS", "POISONOUS"})
+    shields = sum(1 for k in kws if "DIVINE_SHIELD" in k)
+    return venom >= 2 or (venom >= 1 and shields >= 2)
+
+
+def _keyword_turn(cross: dict, fought: list[tuple], hp) -> dict:
+    """Turning point for a keyword board that was losing: told by its fight record, not its stats."""
+    r = cross["round"]
+    results = [res for _, res in fought]
+    record = ", ".join(f"R{x} {res[0]}" for x, res in fought if res)
+    return {"kind": "turning", "round": r, "cause": "keyword_lost",
+            "what": (f"Round {r}: you dropped from {hp(cross, 'before')} to {hp(cross, 'after')} HP, below 15. Your board "
+                     f"wins through keywords (venomous, divine shield), and it lost {results.count('LOSS')} of "
+                     f"{len(results)} fights ({record})."),
+            "habit": "A keyword board needs more keywords than their answers: add venomous or divine-shield units, "
+                     "or the piece that scales them, rather than raw stats.",
+            "damage": hp(cross, "before") - hp(cross, "after"), "ratios": [], "levels": [],
+            "opp": cross.get("opp_hero"), "hp_before": hp(cross, "before"), "hp_after": hp(cross, "after")}
+
+
+def _transition(cross: dict, combats: list[dict], t: dict) -> dict | None:
+    """Stat holders sold on the turn of the fight (to make room for triples, a buy-play-sell engine,
+    a new build): what they had fought with the round before, when that left the board far weaker."""
+    from .lobby import stats as board_stats
+    prev = next((c for c in reversed(combats) if c["round"] < cross["round"] and c.get("my_board")), None)
+    if not prev:
+        return None
+    before, now = board_stats(prev["my_board"]), board_stats(cross.get("my_board") or [])
+    left = [m.get("card_id") for m in cross.get("my_board") or []]
+    pool, gone = list(prev["my_board"]), []
+    for a in t.get("actions") or []:
+        cid = a.get("target")
+        if a["type"] != "SELL" or not cid:
+            continue
+        if cid in left:  # sold a copy; one is still on the board
+            left.remove(cid)
+            continue
+        m = next((x for x in pool if x.get("card_id") == cid), None)
+        if m:
+            pool.remove(m)
+            gone.append(m)
+    gone_stats = board_stats(gone)
+    if not before or now >= 0.6 * before or gone_stats < 0.4 * before:
+        return None
+    return {"prev": prev["round"], "before": before, "now": now, "gone": gone, "gone_stats": gone_stats}
+
+
+def _and(words: list[str]) -> str:
+    return words[0] if len(words) == 1 else ", ".join(words[:-1]) + " and " + words[-1]
+
+
+def _transition_turn(cross: dict, tr: dict, combats: list[dict], hp, st: dict, name) -> dict:
+    r = cross["round"]
+    sold = _and([name(m["card_id"]) for m in sorted(tr["gone"], key=lambda m: -(m["atk"] + m["hp"]))])
+    after = [c for c in combats if c["round"] > r][:3]
+    won = [c["round"] for c in after if c.get("result") == "WIN"]
+    paid = (f" It paid off: you won round{'s' if len(won) > 1 else ''} {_and([str(x) for x in won])} after it, "
+            f"but at {hp(cross, 'before')} HP the dip cost you {hp(cross, 'before') - hp(cross, 'after')}."
+            if after and won and all(c.get("result") != "LOSS" for c in after) else "")
+    out = hp(cross, "after") <= 0
+    what = ((f"Round {r}: you were knocked out from {hp(cross, 'before')} HP." if out else
+             f"Round {r}: you dropped from {hp(cross, 'before')} to {hp(cross, 'after')} HP, below 15.")
+            + f" That turn you sold {sold}, which had fought with {tr['gone_stats']} of your {tr['before']} stats "
+              f"on round {tr['prev']}: you went into this fight with {tr['now']}." + paid)
+    return {"kind": "turning", "round": r, "cause": "transition", "what": what,
+            "habit": ("On a transition turn at 15 HP or less, keep enough on the board to survive the fight: sell a "
+                      "stat holder in the same turn you play what replaces it, or wait a turn."),
+            "damage": hp(cross, "before") - hp(cross, "after"), "sold": [m["card_id"] for m in tr["gone"]],
+            "ratios": [st.get(x) for x in (tr["prev"], r) if st.get(x) is not None], "levels": [],
+            "opp": cross.get("opp_hero"), "hp_before": hp(cross, "before"), "hp_after": hp(cross, "after")}
+
+
+def turning_point(g: dict, strength: list[dict], opponents: list[dict] | None = None, name=None) -> dict | None:
     """Where the game turned, the way a pro reviews it: the fight that took you below 15 HP, what your
     board looked like on the turns before, and what you spent those turns on. None when you never
     crossed the line, or when it was close fights with a normal board (nothing to change)."""
@@ -217,6 +293,17 @@ def turning_point(g: dict, strength: list[dict], opponents: list[dict] | None = 
     levels = [a.get("to_tier") for a in acts if a["type"] == "LEVEL"]
     rolls = sum(1 for a in acts if a["type"] == "REFRESH")
     buys = sum(1 for a in acts if a["type"] == "BUY")
+    # judge the board by its fights first: one lost fight is not a pattern
+    tr = _transition(cross, combats, turns.get(r) or {})
+    if tr:  # one decision on that turn (selling the board down), not a pattern: no second loss needed
+        return _transition_turn(cross, tr, combats, hp, st, name or (lambda cid: cid))
+    fought = [(c["round"], c.get("result")) for c in combats if c["round"] in window]
+    results = [res for _, res in fought]
+    losses = results.count("LOSS")
+    if losses < 2:
+        return None
+    if keyword_board(cross.get("my_board")):
+        return _keyword_turn(cross, fought, hp)  # losing fights, told by its record, never by its stat total
     # behind = the board was under the same-hero average in that fight and clearly behind on some turn
     behind = bool(ratios) and min(ratios) < 0.85 and (st.get(r) if st.get(r) is not None else 1) < 0.9
     # levelled on a turn when the board was already behind (judged by the fight before that turn)
@@ -296,8 +383,9 @@ def with_simulation(g: dict, ds: list[dict], opponents: list[dict] | None = None
     combats = {c["round"]: c for c in g.get("combats") or []}
     for c in sim.get("counters") or []:
         stake = _stake(combats.get(c["round"]), c["base"]["loss"], c["new"]["loss"])
-        if not stake["worth"] or (c["kind"] == "skip_level" and not stake["below_line"]):
-            continue  # a pro takes small losses for tempo; skipping a level is only right when it costs your HP line
+        if not stake["worth"] or (c["kind"] in ("skip_level", "keep") and not stake["below_line"]):
+            continue  # a pro takes small losses for tempo: skipping a level or keeping a minion you sold to
+            #           upgrade is only right when the fight cost you the 15 HP line
         if db is None:
             db = V.card_db(g.get("build") or V.current_bg_meta_build())
         m = _counter_moment(c, db, fights_by_round.get(c["round"]))
@@ -333,15 +421,22 @@ def _stake(c: dict | None, loss_before: float, loss_after: float) -> dict:
 
 
 LINE_WORDS = {"instead": "Instead of {undone}, buy {buy}", "skip_level": "Skip the level-up ({cost} gold), buy {buy}",
-              "spare": "With your spare gold{sell}, buy {buy}"}
+              "spare": "With your spare gold{sell}, buy {buy}",
+              "keep": "Keep {buy} ({stats}) instead of selling it{replace}"}
 
 
 def _counter_moment(c: dict, db, fight: dict | None) -> dict:
     """A line that would have changed a fight you lost, in a coach's words, with the simulation."""
     from .lobby import KW_WORD
-    sell = f" (selling {', '.join(db.name(x) for x in c['sold'])})" if c.get("sold") else ""
-    what = LINE_WORDS[c["kind"]].format(undone=db.name(c.get("undone")), buy=db.name(c["buy"]),
-                                         cost=c.get("level_cost"), sell=sell)
+    sold = ", ".join(db.name(x) for x in c.get("sold") or [])
+    stats = "/".join(map(str, c.get("buy_stats") or []))
+    what = LINE_WORDS[c["kind"]].format(undone=db.name(c.get("undone")), buy=db.name(c["buy"]), stats=stats,
+                                         cost=c.get("level_cost"), sell=f" (selling {sold})" if sold else "",
+                                         replace=f", in place of {sold}" if sold else "")
+    pos, n_board = c.get("pos"), len(c.get("board") or [])
+    slot = "first" if pos == 1 else "last" if pos == n_board else f"in slot {pos}"
+    where = ("You sold it that turn." if c["kind"] == "keep"
+             else "The minion was still in your shop when the turn ended.")
     kw = [KW_WORD.get(k, k.lower()) for k in c.get("buy_kw") or [] if k in KW_WORD]
     risky = []
     if c["kind"] == "skip_level":
@@ -353,10 +448,10 @@ def _counter_moment(c: dict, db, fight: dict | None) -> dict:
             "sold": c.get("sold") or [], "board": c.get("board"), "pos": c.get("pos"), "buy_kw": kw,
             "base": b, "new": n, "gain": c["gain"], "diff": c["gain"] / 100, "risky": risky,
             "what": what, "opp": (fight or {}).get("opp"), "highroll": (fight or {}).get("highroll", False),
-            "calc": f"{what}{' (' + ', '.join(kw) + ')' if kw else ''}, placed {'first' if c.get('pos') == 1 else 'last'}: "
+            "calc": f"{what}{' (' + ', '.join(kw) + ')' if kw else ''}, placed {slot}: "
                     f"the same fight simulated goes from {b['win']:.0f}% win / {b['tie']:.0f}% tie / {b['loss']:.0f}% loss "
-                    f"to {n['win']:.0f}% / {n['tie']:.0f}% / {n['loss']:.0f}%. The minion was still in your shop when the "
-                    f"turn ended. Simulator check for this fight: {c.get('trust')}."
+                    f"to {n['win']:.0f}% / {n['tie']:.0f}% / {n['loss']:.0f}%. {where} "
+                    f"Simulator check for this fight: {c.get('trust')}."
                     + (f" Risky: {', and '.join(risky)}." if risky else "")}
 
 
@@ -390,7 +485,7 @@ def all_decisions(g: dict, bracket: int, strength: list[dict], opponents: list[d
     from .playbook import check as playbook_check
     db = V.card_db(g.get("build") or V.current_bg_meta_build())
     fights = [f for f in fight_decisions(g, strength, opponents) if f.get("highroll") and (f.get("opp_ratio") or 0) >= 2]
-    tp = turning_point(g, strength, opponents)
+    tp = turning_point(g, strength, opponents, db.name)
     rules = [x for x in playbook_check(g, db)  # the turning point already says it for that round
              if not (tp and x["rule"] == "level_below_cap" and x["round"] == tp["round"])]
     fights = [f for f in fights if not (tp and f["round"] == tp["round"])]  # the turning point covers it

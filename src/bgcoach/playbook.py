@@ -209,14 +209,16 @@ def check(g: dict, db=None) -> list[dict]:
                 out.append(_rule("freeze_unused", r, f"Froze {len(frozen)} cards on round {r}, then bought none of "
                                                      f"them on round {r + 1}.", weight=0.05))
 
+    short = _short_rolls(turns)
+    rolled = {x["round"] for x in short}  # that gold is already told as a short roll: one cause, one lesson
     last_round = max(turns) if turns else 0
     left = [(r, t["gold_end"]) for r, t in sorted(turns.items())
-            if 3 <= r < last_round and isinstance(t.get("gold_end"), int) and t["gold_end"] >= 2]
+            if 3 <= r < last_round and r not in rolled and isinstance(t.get("gold_end"), int) and t["gold_end"] >= 2]
     if left:
         out.append(_rule("gold_unspent", left[0][0], "Ended " + ", ".join(f"round {r} with {gold} gold" for r, gold in left)
                          + " left over.", weight=0.05 * sum(gold for _, gold in left)))
     out += _positioning(g, combats, db)
-    out += _short_rolls(turns)
+    out += short
 
     gifts = [r for r, t in turns.items() for a in t.get("actions") or [] if a["type"] == "DARK_GIFT"]
     last = max(turns) if turns else 0

@@ -56,3 +56,62 @@ def test_counter_lines_use_gold_you_had():
     turn["gold_end"] = 2                                   # 2 spare gold + selling the weakest (B) = 3
     spare = [v for v in whatif._counter_variants({"my_board": board}, turn, DB()) if v["kind"] == "spare"]
     assert spare and all([m["card_id"] for m in v["sold"]] == ["B"] for v in spare)
+
+
+def test_keep_line_puts_a_sold_minion_back():
+    # a full board: the sold stat holder comes back in place of the weakest minion, with the stats it was sold at
+    board = [{"card_id": f"M{i}", "atk": 5, "hp": 5} for i in range(6)] + [{"card_id": "TAD", "atk": 1, "hp": 1}]
+    t = {"board": [{"card_id": "CHORAL", "atk": 30, "hp": 30, "pos": 3, "kw": ["DIVINE_SHIELD"]}],
+         "actions": [{"type": "SELL", "target": "CHORAL", "target_atk_hp": [32, 40]},
+                     {"type": "SELL", "target": "TINY", "target_atk_hp": [1, 1]},    # no bigger than the weakest
+                     {"type": "SELL", "target": "M0", "target_atk_hp": [5, 5]}]}     # a copy is still on the board
+    vs = whatif._keep_variants(board, t, weakest=6)
+    assert {v["undone"] for v in vs} == {"CHORAL"} and all(v["kind"] == "keep" for v in vs)
+    assert {v["pos"] for v in vs} == {0, 2, 6}  # in front, where it stood (slot 3), at the back
+    v = vs[0]
+    assert len(v["board"]) == 7 and [m["card_id"] for m in v["sold"]] == ["TAD"]
+    kept = next(m for m in v["board"] if m["card_id"] == "CHORAL")
+    assert (kept["atk"], kept["hp"], kept["kw"]) == (32, 40, ["DIVINE_SHIELD"])
+    # with room on the board nothing has to go
+    assert all(not v["sold"] and len(v["board"]) == 3 for v in whatif._keep_variants(board[:2], t, weakest=0))
+
+
+def test_keep_line_in_a_coachs_words():
+    from bgcoach.decisions import _counter_moment
+    from bgcoach.lessons import habit
+
+    class DB:
+        def name(self, c):
+            return {"CHORAL": "Choral Mrrrglr", "TAD": "Tad"}.get(c, c)
+
+    c = {"round": 14, "kind": "keep", "undone": "CHORAL", "buy": "CHORAL", "buy_stats": [32, 40], "buy_kw": [],
+         "sold": ["TAD"], "pos": 3, "board": ["x"] * 7, "base": {"win": 4, "tie": 2, "loss": 94},
+         "new": {"win": 60, "tie": 5, "loss": 35}, "gain": 55, "stats_change": 70, "trust": "2 points from Bob's Buddy"}
+    m = _counter_moment(c, DB(), None)
+    assert m["what"] == "Keep Choral Mrrrglr (32/40) instead of selling it, in place of Tad"
+    assert "placed in slot 3" in m["calc"] and "You sold it that turn." in m["calc"] and not m["risky"]
+    assert "don't sell a stat holder" in habit(m)
+
+
+def test_keep_line_only_when_the_fight_cost_the_hp_line(monkeypatch):
+    from bgcoach import decisions
+    from bgcoach.lessons import headline
+
+    class DB:
+        def name(self, c):
+            return c
+
+    monkeypatch.setattr(decisions.V, "card_db", lambda build: DB())
+
+    def line(r):
+        return {"round": r, "kind": "keep", "undone": "K", "buy": "K", "buy_stats": [9, 9], "buy_kw": [], "sold": [],
+                "pos": 1, "board": ["K"], "base": {"win": 0, "tie": 0, "loss": 100},
+                "new": {"win": 100, "tie": 0, "loss": 0}, "gain": 100, "stats_change": 18, "trust": "ok"}
+
+    monkeypatch.setattr(whatif, "load", lambda f: {"version": whatif.VERSION, "fights": {}, "counters": [line(3), line(9)]})
+    g = {"file": "x.json", "build": 1, "combats": [
+        {"round": 3, "result": "LOSS", "damage_taken": 6, "hp_after": 34},  # sold early to upgrade: tempo, not a lesson
+        {"round": 9, "result": "LOSS", "damage_taken": 9, "hp_after": 0}]}  # that one cost the game
+    out = [d for d in with_simulation(g, [], []) if d["kind"] == "counter"]
+    assert [d["round"] for d in out] == [9]
+    assert "that fight knocked you out" in headline(out[0], str)

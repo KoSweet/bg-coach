@@ -16,6 +16,8 @@ HABITS = {
                           "that wins it and level next turn.",
     "counter:instead": "When a loss would take you below 15 HP, buy for the next fight first; the long-term card can wait.",
     "counter:spare": "When a loss would take you below 15 HP, spend every gold on the next fight.",
+    "counter:keep": "When a loss would take you below 15 HP, don't sell a stat holder until what replaces it is "
+                    "already on the board.",
     "position": "Give positioning five seconds before the turn ends: big attackers first early, a lone taunt last, "
                 "your biggest minion away from venom.",
     "level": "Before levelling, ask: will I drop below 15 HP if I lose this fight? If yes, stabilize first.",
@@ -66,12 +68,16 @@ def odds(x: dict) -> str:
     return f"{x['win']:.0f}% win, {x['loss']:.0f}% loss"
 
 
+def dropped(hp) -> str:
+    return "that fight knocked you out" if isinstance(hp, int | float) and hp <= 0 else f"you dropped to {hp if hp is not None else '?'}"
+
+
 def headline(d: dict, name) -> str:
     """One plain sentence (no markup), for the after-game card and the overlay."""
     k, r = d["kind"], d.get("round")
     if k == "counter":
         return (f"Round {r}: {d['what']}: that fight goes from {odds(d['base'])} to {odds(d['new'])} (simulated), "
-                f"about {d.get('saved_hp', 0):.0f} HP saved (you dropped to {d.get('hp_after', '?')}).")
+                f"about {d.get('saved_hp', 0):.0f} HP saved ({dropped(d.get('hp_after'))}).")
     if k == "position":
         return (f"Round {r}: you had seen this board on round {d.get('seen_round', '?')}; the same minions in another "
                 f"order win {d['best_win']:.0f}% instead of {d['base_win']:.0f}%, about {d.get('saved_hp', 0):.0f} HP saved.")

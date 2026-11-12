@@ -207,7 +207,8 @@ class Hub:
         return {"file": file, "placement": g.get("placement"), "hero": g.get("hero"),
                 "mmr": (g.get("hdt") or {}).get("rating_after"), "mmr_before": (g.get("hdt") or {}).get("rating"),
                 # a top-2 game without a real turning point: no "mistake" headline, just the small things
-                "good_game": (g.get("placement") or 9) <= 2 and not any(d["kind"] in ("counter", "turning") for d in ranked),
+                "good_game": g.get("placement") == 1 or ((g.get("placement") or 9) <= 2
+                                                          and not any(d["kind"] in ("counter", "turning") for d in ranked)),
                 "lesson": {k: ranked[0].get(k) for k in keep} if ranked else None,
                 "also": [{k: d.get(k) for k in keep} for d in ranked[1:3]],
                 "moments": len(ranked), "simulated": simulated,

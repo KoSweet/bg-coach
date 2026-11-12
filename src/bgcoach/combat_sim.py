@@ -4,8 +4,9 @@
 runs `sim/run.js`, a thin wrapper around Firestone's simulator installed locally in
 sim/node_modules (licence "All rights reserved": personal local use, never redistributed here).
 
-Validated against Bob's Buddy's logged odds (`bgcoach sim-check`): close for rounds 1-10, so
-`whatif.py` only uses it there, and only for fights it reproduces. Uses:
+Validated against Bob's Buddy's logged odds (`bgcoach sim-check`): close for rounds 1-10, looser
+from round 11, so `whatif.py` checks every fight before using it (rounds 11+ only when Bob's Buddy
+agrees). Uses:
   - positioning check: same boards, other orders of your minions -> win % per order
   - buy what-if: your fight board with the bought card swapped for the alternative
 Without the simulator everything else works; those checks are simply missing.

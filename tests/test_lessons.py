@@ -61,8 +61,8 @@ def test_turning_point_causes():
             acts = [{"type": "LEVEL", "to_tier": 4}] if r == level_round else []
             acts += [{"type": "REFRESH"}] * (rolls if r >= 5 else 0) + [{"type": "BUY"}] * (buys if r >= 5 else 0)
             turns.append({"round": r, "actions": acts})
-        combats = [{"round": r, "result": "LOSS" if r == 7 else "WIN", "hp_before": 30 if r < 7 else 22,
-                    "hp_after": 30 if r < 7 else 10, "armor_before": 0, "armor_after": 0} for r in range(1, 8)]
+        combats = [{"round": r, "result": "LOSS" if r >= 6 else "WIN", "hp_before": {6: 30, 7: 22}.get(r, 30),
+                    "hp_after": {6: 22, 7: 10}.get(r, 30), "armor_before": 0, "armor_after": 0} for r in range(1, 8)]
         strength = [{"round": r, "ratio": ratios.get(r, 1.0)} for r in range(1, 8)]
         return {"turns": turns, "combats": combats}, strength
 
@@ -72,3 +72,59 @@ def test_turning_point_causes():
     assert turning_point(g, s)["cause"] == "spent"              # level was fine; the buys didn't keep up
     g, s = game(6, {5: 0.8, 6: 1.1, 7: 1.3})
     assert turning_point(g, s) is None                          # good board in that fight: close fight, no lesson
+
+
+def test_keyword_board_is_judged_by_its_fights_not_its_stats():
+    # a winning venom/divine-shield ("scam") board at a fraction of the stat average is not "behind"
+    from bgcoach.decisions import keyword_board, turning_point
+    venom = [{"kw": ["VENOMOUS", "DIVINE_SHIELD"]}, {"kw": ["VENOMOUS"]}, {"kw": []}]
+    assert keyword_board(venom) and not keyword_board([{"kw": ["TAUNT"]}, {"kw": ["DIVINE_SHIELD"]}])
+
+    def game(results):
+        rounds = range(10, 10 + len(results))
+        hp = 30
+        combats = []
+        for r, res in zip(rounds, results, strict=True):
+            after = hp - (8 if res == "LOSS" else 0)
+            combats.append({"round": r, "result": res, "hp_before": hp, "hp_after": after, "armor_before": 0,
+                            "armor_after": 0, "my_board": venom})
+            hp = after
+        turns = [{"round": r, "actions": [{"type": "REFRESH"}] * 5 + [{"type": "BUY"}] * 5} for r in rounds]
+        strength = [{"round": r, "ratio": 0.3} for r in rounds]
+        return {"turns": turns, "combats": combats}, strength
+
+    g, s = game(["WIN", "WIN", "LOSS", "WIN", "WIN"])     # 30% of the stat average, one loss: not "behind"
+    assert turning_point(g, s) is None
+    g, s = game(["LOSS", "WIN", "LOSS"])                   # a keyword board that lost 2 of 3: told by its record
+    assert turning_point(g, s)["cause"] == "keyword_lost"
+    g, s = game(["LOSS", "LOSS"])
+    tp = turning_point(g, s)
+    assert tp["cause"] == "keyword_lost" and "lost 2 of 2 fights" in tp["what"] and "%" not in tp["what"]
+
+
+def test_selling_the_board_down_at_the_line_is_the_turning_point():
+    # one decision on one turn: sold the stat holders at 15 HP, lost the fight, then won with the new board
+    from bgcoach.decisions import turning_point
+    big = [{"card_id": "choral", "atk": 400, "hp": 400}, {"card_id": "escapee", "atk": 100, "hp": 100},
+           {"card_id": "a", "atk": 50, "hp": 50}]
+    small = [{"card_id": "a", "atk": 50, "hp": 50}, {"card_id": "tad", "atk": 10, "hp": 10}]
+    combats = [{"round": 13, "result": "WIN", "hp_before": 15, "hp_after": 15, "my_board": big},
+               {"round": 14, "result": "LOSS", "hp_before": 15, "hp_after": 8, "my_board": small},
+               {"round": 15, "result": "WIN", "hp_before": 8, "hp_after": 8, "my_board": big},
+               {"round": 16, "result": "WIN", "hp_before": 8, "hp_after": 8, "my_board": big}]
+    sells = [{"type": "SELL", "target": x} for x in ("escapee", "tad", "choral")]  # tad is still on the board
+    g = {"turns": [{"round": 13, "actions": []}, {"round": 14, "actions": sells}], "combats": combats}
+    tp = turning_point(g, [], name=str.title)
+    assert tp["cause"] == "transition" and tp["damage"] == 7 and tp["sold"] == ["escapee", "choral"]
+    assert "sold Choral and Escapee, which had fought with 1000 of your 1100 stats on round 13" in tp["what"]
+    assert "you won rounds 15 and 16 after it" in tp["what"] and "%" not in tp["what"]
+    g["turns"][1]["actions"] = [{"type": "SELL", "target": "tad"}]  # nothing big sold: one loss, no lesson
+    assert turning_point(g, []) is None
+
+
+def test_one_lost_fight_is_not_a_turning_point():
+    from bgcoach.decisions import turning_point
+    combats = [{"round": 7, "result": "WIN", "hp_before": 20, "hp_after": 20},
+               {"round": 8, "result": "LOSS", "hp_before": 20, "hp_after": 10}]
+    turns = [{"round": r, "actions": [{"type": "LEVEL", "to_tier": 5}]} for r in (7, 8)]
+    assert turning_point({"turns": turns, "combats": combats}, [{"round": 8, "ratio": 0.5}]) is None
