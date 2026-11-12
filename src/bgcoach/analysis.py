@@ -54,7 +54,9 @@ def hero_profile(hero: str, hm, db, tribes: list[str]) -> dict:
     power = db.hero_power(hero)
     fx = {t: v for t in tribes if (v := (h.get("tribes") or {}).get(t)) is not None}
     text = re.sub(r"<[^>]+>|\[x\]", "", power.get("text") or "").replace("\n", " ").strip()
+    card = db.get(hero)
     return {"hero": hero, "avg": h.get("avg"), "n": h.get("n"), "top4": h.get("top4"), "first": h.get("first"),
+            "health": (card.get("health") or 30) + (card.get("armor") or 0) if card else None,
             "early_win": _mean((h.get("combat") or {}).get(t) for t in range(2, 6)),
             "late_win": _mean((h.get("combat") or {}).get(t) for t in range(8, 13)),
             "lobby_fx": round(sum(fx.values()), 2) if fx else None, "tribe_fx": fx,
@@ -72,6 +74,11 @@ def hero_reasons(best: dict, mine: dict, db) -> list[str]:
         if b is not None and m is not None and abs(b - m) >= 3:
             who, x, y = (n(best["hero"]), b, m) if b > m else (n(mine["hero"]), m, b)
             out.append(f"{who} wins more fights in {label}: {x:.0f}% vs {y:.0f}%.")
+    bh, mh = best.get("health"), mine.get("health")
+    if bh and mh and abs(bh - mh) >= 5:
+        more, less = (best, mine) if bh > mh else (mine, best)
+        out.append(f"{n(more['hero'])} starts with {max(bh, mh)} health (with armor), {n(less['hero'])} with "
+                   f"{min(bh, mh)}: more health means more room for mistakes before you're out.")
     bf, mf = best.get("lobby_fx"), mine.get("lobby_fx")
     if bf is not None and mf is not None and abs(bf - mf) >= 0.1:
         tribes = ", ".join(t.title() for t in sorted(set(best["tribe_fx"]) | set(mine["tribe_fx"])))

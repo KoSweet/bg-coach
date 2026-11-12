@@ -15,6 +15,9 @@ SOURCES = {
     "jeef_tips": ("JeefHS, 10 PRO Tips to EASILY Hit 10k (2025)", "https://www.youtube.com/watch?v=5qtIFm2-zK4"),
     "jeef_level": ("JeefHS, The ULTIMATE LEVELING GUIDE (2025 Updated)", "https://www.youtube.com/watch?v=tjSsXWdgTvE"),
     "pocky": ("Pocky (11.5k MMR), Battlegrounds guide", "https://hearthstone-decks.net/?p=50353"),
+    "shady_basics": ("Shadybunny, The Ultimate Beginner's Guide to Hearthstone Battlegrounds",
+                     "https://www.youtube.com/watch?v=0plivGW2PPo"),
+    "jeef_heroes": ("JeefHS, Ranking ALL Heroes in Hearthstone Battlegrounds", "https://www.youtube.com/watch?v=Y4sX0oqgWFE"),
     "jeef_pos": ("JeefHS, Positioning Explained by a PRO", "https://www.youtube.com/watch?v=AsnJkEs9880"),
     "jeef_every": ("JeefHS, Rank 1 Battlegrounds Player Explains EVERY Play", "https://www.youtube.com/watch?v=iUKdMA7jO4s"),
     "dark_gifts": ("Blizzard, Developer Insight: Dark Gifts",
@@ -35,6 +38,8 @@ RULES = {
                             "A triple reward discovers from one tier above your tavern. Level first, then play it."),
     "freeze_unused": ("Froze the shop, bought none of it", "pocky",
                       "Freezing costs you a fresh shop: freeze only what you'll pay for next turn."),
+    "gold_unspent": ("Gold left unspent", "shady_basics",
+                     "Gold doesn't carry over: spend it on a minion, a spell, your hero power, or at worst roll it away."),
     "roll_short": ("Rolled without gold to buy", "jeef_every",
                    "If you can afford a useful buy, don't roll into something you'll only be able to freeze. "
                    "(Rolling your last 1–2 gold is fine: it would be lost anyway.)"),
@@ -192,6 +197,12 @@ def check(g: dict, db=None) -> list[dict]:
                 out.append(_rule("freeze_unused", r, f"Froze {len(frozen)} cards on round {r}, then bought none of "
                                                      f"them on round {r + 1}.", weight=0.05))
 
+    last_round = max(turns) if turns else 0
+    left = [(r, t["gold_end"]) for r, t in sorted(turns.items())
+            if 3 <= r < last_round and isinstance(t.get("gold_end"), int) and t["gold_end"] >= 2]
+    if left:
+        out.append(_rule("gold_unspent", left[0][0], "Ended " + ", ".join(f"round {r} with {gold} gold" for r, gold in left)
+                         + " left over.", weight=0.05 * sum(gold for _, gold in left)))
     out += _positioning(g, combats, db)
     out += _short_rolls(turns)
 

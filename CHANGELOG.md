@@ -23,7 +23,8 @@ Coaching that reads the lobby, like a coach watching over your shoulder.
   written guide, Blizzard's Dark Gift rules), checked against every game: early rolls, tier 2 on
   turn 2, tier 3 by turn 5, levelling below the 15-HP damage cap, triple reward before levelling,
   unused freezes, unused Dark Gifts, and positioning (weak minion leading early, a taunt in reach of
-  a cleave, your biggest minion into venom). Each moment links its source. See `docs/PLAYBOOK.md`.
+  a cleave, your biggest minion into venom), and gold left unspent. The hero pick explanation also
+  compares starting health. Each moment links its source. See `docs/PLAYBOOK.md`.
 - **Hero pick, explained:** the start-of-game moment says why the other hero was better: top-4 rate,
   early vs late fight win rate, how this lobby's tribes suit each hero, and the hero power.
 - Parser records the leaderboard every round, the shop left at the end of each turn, and the next

@@ -117,3 +117,14 @@ def test_roll_into_a_freeze_only_when_you_could_buy():
     assert "roll_short" in rules(game([could_buy]))
     assert "roll_short" not in rules(game([spare_gold]))   # last gold would be lost anyway
     assert "roll_short" not in rules(game([bought]))
+
+
+def test_gold_left_unspent():
+    ts = [turn(r, gold_end=0) for r in range(1, 9)]
+    assert "gold_unspent" not in rules(game(ts))
+    ts[4]["gold_end"] = 3
+    ts[7]["gold_end"] = 9          # the last turn of the game doesn't count (you may have run out of time)
+    r = [x for x in playbook.check(game(ts)) if x["rule"] == "gold_unspent"]
+    assert len(r) == 1 and "round 5 with 3 gold" in r[0]["what"] and "round 8" not in r[0]["what"]
+    ts[4]["gold_end"] = 1          # 1 gold is too small to call out
+    assert "gold_unspent" not in rules(game(ts))

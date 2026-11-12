@@ -17,11 +17,39 @@ and the [Dark Gift page](https://hearthstone.wiki.gg/wiki/Battlegrounds/Dark_Gif
 
 ## Hero pick
 
-- Hero strength depends on the lobby: the tribes in it, and the hero power's pattern (tempo, economy,
-  greed). The coach shows each offered hero's top-4 rate, early vs late fight win rate, and how this
-  lobby's tribes move its average (public statistics at your MMR).
+From JeefHS, [Ranking ALL Heroes](https://www.youtube.com/watch?v=Y4sX0oqgWFE), and Shadybunny,
+[The Ultimate Beginner's Guide](https://www.youtube.com/watch?v=0plivGW2PPo):
+
+- Ask two questions: **does the hero generate economy** (extra gold or cheap minions, e.g. a
+  discover for 2 gold), and **how much health does it start with** (health + armor)? Economy gets
+  you to tier 5 faster with a decent board, which is where your direction comes from. A hero without
+  economy "better be something amazing".
+- Avoid hero powers you'll pay gold for without it mattering: that gold is better spent on levelling
+  and minions. Some pros take such a hero only for its armor and rarely press the power.
+- Health is a resource: more health means more room for mistakes. Low-armor heroes (5–7) are only
+  good if their power pays off early (e.g. a hero that wants tier 4 on turn 5); otherwise one or two
+  10-damage hits put you on the edge. A no-power hero with lots of health (Patchwerk) beats many weak powers.
+- Heroes that do nothing early "roll over and die"; check their early-game strength.
+- Many heroes depend on the lobby: some need specific tribes (Beasts, Murlocs and Pirates, an
+  "APM" tribe for hand-cycling heroes). The coach shows each offered hero's top-4 rate, early vs late
+  fight win rate, starting health, and how this lobby's tribes move its average at your MMR.
 - Some heroes change the curve: 1-gold hero powers you want every turn (Captain Eudora, Rafaam…)
   level to tier 2 on turn 3 or 4 instead of turn 2. Learn your hero's curve.
+
+## Economy
+
+From the same two guides:
+
+- **checked** Spend all your gold every turn: a minion, a spell, the hero power, or at worst roll
+  the last gold away. Gold doesn't carry over.
+- Economy minions (gold, cheap minions, coins) are worth buying early: they let you level and buy
+  in the same turn later, and replace your early board faster once you reach tier 4.
+- A standard turn-by-turn plan: turn 1 buy; turn 2 level; turn 3 get two units out of 5 gold (an
+  economy minion, a 2-gold spell, or selling your turn-1 buy); turn 4 two units; turn 5 level to 3
+  and buy; turn 6 level to 4 and spend the last gold on a 1-gold spell, hero power or a roll; turn 7
+  is the first real rolling turn (looking for strong 4-drops); tier 5 on turn 8 or 9, staying a turn
+  longer on 4 if you're still losing fights.
+- Everything you buy before tier 5 exists to keep you alive and set up your real board.
 
 ## Early game (turns 1–5)
 
