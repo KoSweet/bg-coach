@@ -35,6 +35,17 @@ FEED_ROWS = 10
 ORPHAN_AFTER_S = 60  # app gone this long → close (an overlay started by an app that has quit or crashed)
 
 
+def move_words(b: dict, name) -> str:
+    """'Move Blue Whelp first' / 'to slot 3' / 'Reverse your board' from a best-order suggestion."""
+    if b.get("reverse"):
+        return "Reverse your board"
+    if b.get("card_id"):
+        to, n = b.get("to"), b.get("of")
+        where = "first" if to == 1 else "last" if to == n else f"to slot {to}"
+        return f"Move {name(b['card_id'])} {where}"
+    return "Order: " + ", ".join(name(c) for c in b.get("order") or [])
+
+
 def _stream(url: str, out: queue.Queue, app_pid: int | None = None):
     """Read the app's server-sent events forever (reconnects).
 
@@ -416,8 +427,12 @@ class Overlay:
             self.nextopp.config(text=self._next_text(d), fg=RED if (d.get("last_seen") or {}).get("highroll") else FG)
         elif kind == "next_opponent_odds":
             base = self.nextopp.cget("text").split("\n⚔")[0]
-            self.nextopp.config(text=f"{base}\n⚔ your board vs that: {d['win']:.0f}% win · {d['tie']:.0f}% tie · "
-                                     f"{d['loss']:.0f}% loss (they've grown since)")
+            text = (f"{base}\n⚔ your board vs that: {d['win']:.0f}% win · {d['tie']:.0f}% tie · "
+                    f"{d['loss']:.0f}% loss (they've grown since)")
+            b = d.get("best_order")
+            if b:
+                text += f"\n⇄ {move_words(b, self.n)}: {b['base_win']:.0f}% → {b['win']:.0f}% win vs that board"
+            self.nextopp.config(text=text)
         elif kind == "turn_start":
             self._show(d.get("round"), d.get("tier"), d.get("gold"), d.get("hp"), d.get("armor"))
             self._show_strength(d)
@@ -495,6 +510,11 @@ class Overlay:
         who = f"Next: {self.n(d.get('opp_hero'))} · T{d.get('opp_tier')} · {d.get('opp_hp')} HP"
         if d.get("opp_triples"):
             who += f" · {d['opp_triples']} triples"
+        recent = " · ".join(f"R{x['round']} −{x['lost']}" if x["lost"] else f"R{x['round']} no loss"
+                            for x in d.get("opp_recent") or [])
+        if recent:
+            unhurt = d.get("opp_unhurt") or 0
+            who += f"\nTheir last fights: {recent}" + (f" (no loss in {unhurt} rounds)" if unhurt >= 3 else "")
         last = d.get("last_seen")
         if not last:
             return who + "\n(you haven't fought them yet)"

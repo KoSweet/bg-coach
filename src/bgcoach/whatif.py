@@ -80,6 +80,26 @@ def _orders(board: list[dict]) -> list[list[dict]]:
     return out
 
 
+def order_change(before: list[dict], after: list[dict]) -> dict:
+    """The one move that turns `before` into `after` (as `_orders` makes them): which minion goes to
+    which slot, or the whole board reversed."""
+    n = len(before)
+    key = [id(x) for x in after]
+    if key == [id(x) for x in reversed(before)] and n > 2:
+        return {"reverse": True, "of": n}
+    moves = []  # one order can be several moves (A last = B first): say it the way a player would
+    for i in range(n):
+        for j in range(n):
+            b = before[:i] + before[i + 1:]
+            b.insert(j, before[i])
+            if i != j and [id(x) for x in b] == key:
+                moves.append((0 if j == 0 else 1 if j == n - 1 else 2, i, j))
+    if moves:
+        _, i, j = min(moves)
+        return {"card_id": before[i].get("card_id"), "to": j + 1, "of": n}
+    return {"order": [m.get("card_id") for m in after], "of": n}
+
+
 def _score(r: dict) -> float:
     """How good a fight is for you: win% plus half the ties."""
     return r["win"] + r["tie"] / 2

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from collections import Counter
 
-from . import advice, meta
+from . import advice, meta, situation
 from . import version as V
 
 MINION_COST = 3
@@ -274,7 +274,8 @@ def _transition_turn(cross: dict, tr: dict, combats: list[dict], hp, st: dict, n
             "opp": cross.get("opp_hero"), "hp_before": hp(cross, "before"), "hp_after": hp(cross, "after")}
 
 
-def turning_point(g: dict, strength: list[dict], opponents: list[dict] | None = None, name=None) -> dict | None:
+def turning_point(g: dict, strength: list[dict], opponents: list[dict] | None = None, name=None,
+                  db=None) -> dict | None:
     """Where the game turned, the way a pro reviews it: the fight that took you below 15 HP, what your
     board looked like on the turns before, and what you spent those turns on. None when you never
     crossed the line, or when it was close fights with a normal board (nothing to change)."""
@@ -337,7 +338,20 @@ def turning_point(g: dict, strength: list[dict], opponents: list[dict] | None = 
                else f" On rounds {window[0]}–{r} your board was {trend} of the average for your hero, and you {did}."
                + (f" (Their board was also a highroll: {opp['ratio']:.1f}× their hero's average.)" if opp.get("highroll")
                   and opp.get("ratio") else "")))
+    sit = situation.at(g, r, strength, db)
+    if cause == "levelled":  # say why that level was wrong in this game, not only that it happened
+        lr = max((x for x in window if any(a["type"] == "LEVEL" for a in turns[x].get("actions") or [])), default=None)
+        to = next((a.get("to_tier") for a in reversed(turns[lr].get("actions") or []) if a["type"] == "LEVEL"),
+                  None) if lr else None
+        at_level = situation.at(g, lr, strength, db, next_tier=to) if lr else None
+        risks = situation.level_risks(at_level) if at_level else []
+        if risks:
+            what += f" When you levelled on round {lr}: {situation.join(risks)}."
+            pro = situation.level_support(at_level)
+            if pro:
+                what += f" For it: {situation.join(pro)}."
     return {"kind": "turning", "round": r, "cause": cause, "what": what, "habit": habit,
+            "context": [situation.summary(sit)] if sit else [],
             "damage": hp(cross, "before") - hp(cross, "after"), "ratios": ratios, "levels": levels,
             "opp": cross.get("opp_hero"), "hp_before": hp(cross, "before"), "hp_after": hp(cross, "after")}
 
@@ -485,8 +499,8 @@ def all_decisions(g: dict, bracket: int, strength: list[dict], opponents: list[d
     from .playbook import check as playbook_check
     db = V.card_db(g.get("build") or V.current_bg_meta_build())
     fights = [f for f in fight_decisions(g, strength, opponents) if f.get("highroll") and (f.get("opp_ratio") or 0) >= 2]
-    tp = turning_point(g, strength, opponents, db.name)
-    rules = [x for x in playbook_check(g, db)  # the turning point already says it for that round
+    tp = turning_point(g, strength, opponents, db.name, db)
+    rules = [x for x in playbook_check(g, db, strength)  # the turning point already says it for that round
              if not (tp and x["rule"] == "level_below_cap" and x["round"] == tp["round"])]
     fights = [f for f in fights if not (tp and f["round"] == tp["round"])]  # the turning point covers it
     d = fights + rules + ([tp] if tp else [])

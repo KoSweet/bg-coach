@@ -21,6 +21,7 @@ from .live import LiveWatcher
 STATIC = Path(__file__).parent / "static"
 PORT = 8765
 STALE_ROUNDS = 3  # live odds only against a board you saw at most this many rounds ago
+LIVE_ORDER_GAIN = 8.0  # points of (win + half the ties) a better order must add before the coach says so
 _PAGE: dict = {}
 
 
@@ -54,7 +55,8 @@ class Hub:
             last["ratio"] = round(last["stats"] / ref, 2) if ref else None
             last["highroll"] = bool(last["ratio"] and last["ratio"] >= lobby.HIGHROLL)
             last["kw_text"] = lobby.describe_kw(last.get("kw") or {})
-            db = self.watcher.db if self.watcher and self.watcher.db else V.card_db(V.current_bg_meta_build())
+            db = (self.watcher.db if self.watcher and self.watcher.db else V.card_db(V.current_bg_meta_build())) \
+                if last.get("board") else None
             last["tribes"] = lobby.tribes(last.get("board"), db)
             last["tribe_text"] = lobby.describe_tribes(last["tribes"])
             # their board now, if it grew like an average player's on that hero since you saw it
@@ -69,18 +71,33 @@ class Hub:
         opp = self.next_opp
         if not opp or not opp.get("last_seen") or my_board is None or not combat_sim.available():
             return
-        if (opp.get("round") or 0) - opp["last_seen"]["round"] > STALE_ROUNDS:
-            return  # a board from many rounds ago says nothing about their board now
+        if self._their_board(opp) is None:
+            return  # a board from many rounds ago, with nothing to grow it by, says little about their board now
         self._odds_gen += 1
         gen = self._odds_gen
         threading.Timer(delay, self._run_odds, args=(gen, opp, my_board)).start()
+
+    @staticmethod
+    def _their_board(opp: dict) -> tuple[list, bool] | None:
+        """The board to simulate against: the one you saw, if you met them at most STALE_ROUNDS ago.
+        (Growing an older board to their hero's average was tested and rejected: on 14 real rematches
+        it called every fight a sure win, and 6 of them were losses: players who meet you again have
+        usually outgrown the average.)"""
+        last = opp.get("last_seen") or {}
+        if (opp.get("round") or 0) - (last.get("round") or 0) > STALE_ROUNDS:
+            return None
+        return last.get("board") or [], False
 
     def _run_odds(self, gen: int, opp: dict, my_board: list) -> None:
         if gen != self._odds_gen:
             return  # your board changed again: a newer request is coming
         from . import combat_sim
         last = opp["last_seen"]
-        fight = {"my_board": my_board, "opp_board": last["board"], "opp_hero": last.get("hero"),
+        their = self._their_board(opp)
+        if their is None:
+            return
+        board = their[0]
+        fight = {"my_board": my_board, "opp_board": board, "opp_hero": last.get("hero"),
                  "round": opp.get("round"), "hp_before": None}
         try:
             r = combat_sim.simulate({"x": combat_sim.build_battle(fight, opp.get("my_hero"), opp.get("my_tier") or 3,
@@ -88,10 +105,42 @@ class Hub:
         except Exception as e:
             health.record_error("live_odds", e)
             return
-        if gen == self._odds_gen and r.get("win") is not None:
-            self.emit("next_opponent_odds", {"round": opp.get("round"), "opp_hero": opp.get("opp_hero"),
-                                             "seen_round": last["round"], "win": r["win"], "tie": r["tie"],
-                                             "loss": r["loss"]})
+        if gen != self._odds_gen or r.get("win") is None:
+            return
+        out = {"round": opp.get("round"), "opp_hero": opp.get("opp_hero"), "seen_round": last["round"],
+               "win": r["win"], "tie": r["tie"], "loss": r["loss"]}
+        self.emit("next_opponent_odds", out)  # the odds first, the better order a few seconds later
+        try:
+            best = self._best_order(opp, my_board, r, board) if len(my_board) >= 2 else None
+        except Exception as e:
+            health.record_error("live_order", e)
+            return
+        if best and gen == self._odds_gen:
+            self.emit("next_opponent_odds", {**out, "best_order": best})
+
+    def _best_order(self, opp: dict, my_board: list, base: dict, their: list | None = None) -> dict | None:
+        """Your minions in another order against their last board: every single move plus reversed,
+        a quick screen, then the best one confirmed. Only shown when it wins clearly more often."""
+        from . import combat_sim, whatif
+        last = opp["last_seen"]
+
+        def battle(board, sims):
+            fight = {"my_board": board, "opp_board": their if their is not None else last["board"],
+                     "opp_hero": last.get("hero"),
+                     "round": opp.get("round"), "hp_before": None}
+            return combat_sim.build_battle(fight, opp.get("my_hero"), opp.get("my_tier") or 3, sims=sims)
+
+        orders = whatif._orders(my_board)
+        quick = combat_sim.simulate({f"o{i}": battle(o, 200) for i, o in enumerate(orders)})
+        scored = [(whatif._score(v), int(k[1:])) for k, v in quick.items() if v.get("win") is not None]
+        if not scored or max(scored)[0] - whatif._score(base) < LIVE_ORDER_GAIN:
+            return None
+        i = max(scored)[1]
+        conf = combat_sim.simulate({"c": battle(orders[i], 1000)}).get("c") or {}
+        if conf.get("win") is None or whatif._score(conf) - whatif._score(base) < LIVE_ORDER_GAIN:
+            return None
+        return {**whatif.order_change(my_board, orders[i]), "win": conf["win"], "tie": conf["tie"],
+                "loss": conf["loss"], "base_win": base["win"]}
 
     def _advise(self, data: dict, bracket: int) -> None:
         """Live pick advice with the same rules as the post-game review (advice.py):

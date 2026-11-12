@@ -7,6 +7,8 @@ and you judge.
 """
 from __future__ import annotations
 
+from . import situation
+
 TRIPLE_REWARD = "TB_BaconShop_Triples_01"
 DARK_GIFTS_FROM = "2026-08-04"  # Season 14 (patch 36.2) added Dark Gifts
 DAMAGE_CAP_HP = 15  # before top 4 you can't lose more than 15 in one fight: staying above it = two lives
@@ -159,9 +161,23 @@ def _short_rolls(turns: dict) -> list[dict]:
     return out
 
 
-def check(g: dict, db=None) -> list[dict]:
+def _affordable(t: dict, db) -> list[str]:
+    """Cards still in the shop when the turn ended that the leftover gold could buy (minions cost 3)."""
+    gold = t.get("gold_end") or 0
+    out = []
+    for s in t.get("end_shop") or []:
+        c = db.get(s.get("card_id")) if db else {}
+        cost = c.get("cost") if c.get("type") == "BATTLEGROUND_SPELL" else 3
+        if cost is not None and cost <= gold and s.get("card_id"):
+            out.append((db.name(s["card_id"]) if db else s["card_id"]) + f" ({cost}g)")
+    return out
+
+
+def check(g: dict, db=None, strength: list[dict] | None = None) -> list[dict]:
     """Every playbook rule this game broke, with the round and what happened.
-    `db` (card database) refines positioning checks; without it they still run on keywords."""
+    `db` (card database) refines positioning checks; without it they still run on keywords.
+    `strength` (your board vs your hero's average, per round) lets a rule say why it mattered in this
+    game, and silences it when the game says the move was fair."""
     turns = {t["round"]: t for t in g.get("turns") or []}
     combats = {c["round"]: c for c in g.get("combats") or []}
     out = []
@@ -191,9 +207,19 @@ def check(g: dict, db=None) -> list[dict]:
         levels = [i for i, a in enumerate(acts) if a["type"] == "LEVEL"]
         if levels and r >= 4 and hp_after is not None and hp_start >= DAMAGE_CAP_HP > hp_after > 0 \
                 and c.get("result") == "LOSS":
-            out.append(_rule("level_below_cap", r,
-                             f"Levelled to tier {acts[levels[-1]].get('to_tier') or '?'} at {hp_start} HP, lost "
-                             f"{c.get('damage_taken')} and dropped to {hp_after}.", weight=0.3))
+            to = acts[levels[-1]].get("to_tier")
+            sit = situation.at(g, r, strength, db, next_tier=to)
+            risks = situation.level_risks(sit) if sit else []
+            fair = sit and not risks and situation.level_support(sit)  # board ahead, lobby already there
+            if not fair:  # a fair level that lost a fight is nothing to fix
+                why = f" In this game: {situation.join(risks)}." if risks else ""
+                pro = situation.level_support(sit) if sit else []
+                if pro:  # a close call: say what spoke for it too
+                    why += f" For it: {situation.join(pro)}."
+                out.append(_rule("level_below_cap", r,
+                                 f"Levelled to tier {to or '?'} at {hp_start} HP, lost "
+                                 f"{c.get('damage_taken')} and dropped to {hp_after}.{why}", weight=0.3,
+                                 context=[situation.summary(sit)] if sit else []))
         triples = [i for i, a in enumerate(acts) if a["type"] == "CAST" and a.get("card_id") == TRIPLE_REWARD]
         if triples and levels and min(triples) < max(levels):
             tier = acts[min(triples)].get("tier") or t.get("tier")
@@ -220,8 +246,13 @@ def check(g: dict, db=None) -> list[dict]:
     left = [(r, t["gold_end"]) for r, t in sorted(turns.items())
             if 3 <= r < last_round and r not in rolled and isinstance(t.get("gold_end"), int) and t["gold_end"] >= 2]
     if left:
+        worst = max(left, key=lambda x: x[1])[0]
+        could = _affordable(turns[worst], db)
+        shop = (f" On round {worst} the shop still had {', '.join(could[:3])}." if could else
+                f" On round {worst} nothing left in the shop was affordable: a roll or your hero power would "
+                f"still have used it.")
         out.append(_rule("gold_unspent", left[0][0], "Ended " + ", ".join(f"round {r} with {gold} gold" for r, gold in left)
-                         + " left over.", weight=0.05 * sum(gold for _, gold in left)))
+                         + " left over." + shop, weight=0.05 * sum(gold for _, gold in left)))
     out += _positioning(g, combats, db)
     out += short
 
@@ -230,6 +261,9 @@ def check(g: dict, db=None) -> list[dict]:
     season14 = str(g.get("start") or "") >= DARK_GIFTS_FROM or bool(gifts)
     if season14 and last >= 9 and len(gifts) < 3 and (g.get("placement") or 8) >= 3:
         when = f" (used on rounds {', '.join(map(str, gifts))})" if gifts else ""
+        spare = [r for r, t in sorted(turns.items()) if r >= 3 and r not in gifts and (t.get("gold_end") or 0) >= 3]
+        room = (f" You ended round{'s' if len(spare) > 1 else ''} {', '.join(map(str, spare[:4]))} with 3+ gold: "
+                f"a Dark Gift fit there." if spare else "")
         out.append(_rule("dark_gifts_unused", last, f"Game ended on round {last} with {3 - len(gifts)} of 3 Dark Gifts "
-                                                    f"unused{when}.", weight=0.1 * (3 - len(gifts))))
+                                                    f"unused{when}.{room}", weight=0.1 * (3 - len(gifts))))
     return out

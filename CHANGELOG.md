@@ -50,6 +50,24 @@ The point first, details on demand.
 - A short roll and unspent gold on the same turn are one lesson, not two that disagree.
 
 ### Added
+- **Reasons from this game** (`situation.py`): a lesson about levelling now says why it mattered
+  in *this* game, from what was on screen that turn: your board against your hero's average ("far
+  too weak"), how many players had more health than you, whether anyone else was on the next tier
+  yet, and what the next tier holds for your tribe in the pool ("tier 6 adds only Snazzy Phantom for
+  your Undeads: your build didn't need it yet"). What spoke for the level is said too ("For it: 2
+  players were already on tier 5"), and a fair level that just lost a fight (board ahead, the lobby
+  already there) isn't flagged at all. Turning points blamed on a level get the same reasons, and
+  every lesson shows where you stood that turn (📍).
+- **Unspent gold** names what the shop still had that you could afford; **Dark Gifts** names the
+  turns you ended with 3+ gold.
+- **Live best order:** against your next opponent's last board (if you met them in the last 3
+  rounds), the coach tries every single move of one minion plus the reversed board and says "Move X
+  first: 42% → 61% win" when a new order is confirmed 8+ points better. Growing older boards to their
+  hero's average was tested on 14 real rematches and rejected: it called every one a sure win, and 6
+  were losses.
+- **Next opponent's last fights:** what each of their last two fights cost them, and "no loss in N
+  rounds" (from the leaderboard's health; the log doesn't record who they fought). Their *current*
+  tribe and win streak from the in-game hover aren't in any log the game writes.
 - **Next opponent:** the live panel and the overlay show the minions you saw when you last met that
   player, and their tribes the way the in-game hover sums them up ("6 Beast"), worked out from those
   minions (the log has no tribe tag).

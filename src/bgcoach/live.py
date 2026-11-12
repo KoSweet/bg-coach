@@ -4,6 +4,7 @@ Used by `bgcoach log --live` (terminal) and the UI (server-sent events).
 """
 from __future__ import annotations
 
+import itertools
 import threading
 import time
 from collections.abc import Callable
@@ -147,7 +148,18 @@ class LiveWatcher(threading.Thread):
         seen = [c for c in rp.g.combats if c.get("opp_lobby_id") == lobby_id and c.get("opp_board")]
         last = seen[-1] if seen else None
         board = rp.board()
+        # their health at the start of every round: what each of their fights cost them (the hover's
+        # history, as far as the log shows it: who they fought isn't logged, what they lost is)
+        hps = [(t["round"], (t.get("lobby") or {}).get(str(lobby_id), {}).get("hp")) for t in rp.g.turns]
+        hps = [(r, h) for r, h in hps if isinstance(h, int)]
+        lost = [{"round": r0, "lost": max(0, h0 - h1)} for (r0, h0), (_, h1) in itertools.pairwise(hps) if r0 >= 2]
+        held = 0
+        for x in reversed(lost):
+            if x["lost"]:
+                break
+            held += 1
         return {"opp_hero": lb.get("hero"), "opp_tier": lb.get("tier"), "opp_hp": lb.get("hp"),
+                "opp_recent": lost[-2:], "opp_unhurt": held,
                 "opp_triples": lb.get("triples"), "opp_place": lb.get("place"),
                 "last_seen": {"round": last["round"], "stats": stats(last["opp_board"]), "kw": keywords(last["opp_board"]),
                               "board": last["opp_board"], "hero": last.get("opp_hero")} if last else None,
