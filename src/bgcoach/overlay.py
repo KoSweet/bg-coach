@@ -126,6 +126,9 @@ class Overlay:
         self.checks.pack(anchor="w")
         self.strength = tk.Label(outer, text="", fg=MUTED, bg=BG, font=(FONT, 10, "bold"))
         self.strength.pack(anchor="w")
+        # who you fight next (as the game announces it) + the last board you saw them with
+        self.nextopp = tk.Label(outer, text="", fg=FG, bg=BG, font=(FONT, 9), wraplength=300, justify="left")
+        self.nextopp.pack(anchor="w")
         self.advice = tk.Frame(outer, bg="#1f1a10", padx=4, pady=3)  # shown only while you choose
         self.advice_rows: list[tk.Widget] = []
         self.offers: dict | None = None
@@ -397,7 +400,14 @@ class Overlay:
         elif kind == "round":
             self.in_game = True
             self.title.config(text="bg-coach · recording")
+            self.nextopp.config(text="")
             self._add_row(f"R{d.get('round')}", MUTED, "──────── new round ────────", bg=BG)
+        elif kind == "next_opponent":
+            self.nextopp.config(text=self._next_text(d), fg=RED if (d.get("last_seen") or {}).get("highroll") else FG)
+        elif kind == "next_opponent_odds":
+            base = self.nextopp.cget("text").split("\n⚔")[0]
+            self.nextopp.config(text=f"{base}\n⚔ your board vs that: {d['win']:.0f}% win · {d['tie']:.0f}% tie · "
+                                     f"{d['loss']:.0f}% loss (they've grown since)")
         elif kind == "turn_start":
             self._show(d.get("round"), d.get("tier"), d.get("gold"), d.get("hp"), d.get("armor"))
             self._show_strength(d)
@@ -465,6 +475,21 @@ class Overlay:
         self.mini.itemconfig(self.mini_txt, text=str(rnd or ""))
         arm = f"+{armor}" if armor else ""
         self.stats.config(text=f"Round {rnd} · Tier {tier} · {gold if gold is not None else '?'}g · {hp}{arm} HP")
+
+    def _next_text(self, d: dict) -> str:
+        who = f"Next: {self.n(d.get('opp_hero'))} · T{d.get('opp_tier')} · {d.get('opp_hp')} HP"
+        if d.get("opp_triples"):
+            who += f" · {d['opp_triples']} triples"
+        last = d.get("last_seen")
+        if not last:
+            return who + "\n(you haven't fought them yet)"
+        hr = " HIGHROLL" if last.get("highroll") else ""
+        ratio = f", {last['ratio']:.1f}× their hero's avg{hr}" if last.get("ratio") else ""
+        ago = (d.get("round") or 0) - last["round"]
+        old = f" ({ago} rounds ago: too old to compare)" if ago > 3 else ""
+        proj = f"\n≈ {last['projected']} stats now if they grew like an average player" if last.get("projected") else ""
+        return (f"{who}\nLast seen R{last['round']}{old}: {last['stats']} stats{ratio} · {last.get('kw_text', '')}"
+                f" · yours now {d.get('my_stats')}{proj}")
 
     def run(self):
         self.root.mainloop()

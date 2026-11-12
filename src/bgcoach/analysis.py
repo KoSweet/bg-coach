@@ -8,7 +8,9 @@ Nothing here is a rule; every number says how it was computed and from how many 
 """
 from __future__ import annotations
 
+import re
 import statistics as st
+from collections import Counter
 
 from . import advice, meta
 from .advice import Stat
@@ -29,23 +31,87 @@ def player_mmr(games: list[dict]) -> int | None:
     return None
 
 
+def lobby_tribes(g: dict, db) -> list[str]:
+    """This lobby's tribes, from the minions you saw in shops (the game shows them at hero select)."""
+    seen: Counter = Counter()
+    for t in g.get("turns") or []:
+        for s in (t.get("shop") or []) + (t.get("end_shop") or []):
+            c = db.get(s.get("card_id") if isinstance(s, dict) else s)
+            for r in c.get("races") or ([c["race"]] if c.get("race") else []):
+                if r not in ("ALL", "INVALID"):
+                    seen[r] += 1
+    return sorted(r for r, n in seen.most_common(5) if n >= 2)  # a lobby has 5 tribes
+
+
+def _mean(vals) -> float | None:
+    vals = [v for v in vals if v is not None]
+    return round(st.mean(vals), 1) if vals else None
+
+
+def hero_profile(hero: str, hm, db, tribes: list[str]) -> dict:
+    """What the numbers say about a hero: finishes, when it is strong, how this lobby suits it, its power."""
+    h = hm.get(hero) or {}
+    power = db.hero_power(hero)
+    fx = {t: v for t in tribes if (v := (h.get("tribes") or {}).get(t)) is not None}
+    text = re.sub(r"<[^>]+>|\[x\]", "", power.get("text") or "").replace("\n", " ").strip()
+    return {"hero": hero, "avg": h.get("avg"), "n": h.get("n"), "top4": h.get("top4"), "first": h.get("first"),
+            "early_win": _mean((h.get("combat") or {}).get(t) for t in range(2, 6)),
+            "late_win": _mean((h.get("combat") or {}).get(t) for t in range(8, 13)),
+            "lobby_fx": round(sum(fx.values()), 2) if fx else None, "tribe_fx": fx,
+            "power": power.get("name"), "power_text": text or None, "power_cost": power.get("cost")}
+
+
+def hero_reasons(best: dict, mine: dict, db) -> list[str]:
+    """Plain-language reasons the best-rated hero beat yours (only differences that are there)."""
+    n = db.name
+    out = []
+    if best.get("top4") is not None and mine.get("top4") is not None and best["top4"] - mine["top4"] >= 3:
+        out.append(f"{n(best['hero'])} finishes top 4 in {best['top4']:.0f}% of games, {n(mine['hero'])} in {mine['top4']:.0f}%.")
+    for k, label in (("early_win", "rounds 2–5"), ("late_win", "rounds 8–12")):
+        b, m = best.get(k), mine.get(k)
+        if b is not None and m is not None and abs(b - m) >= 3:
+            who, x, y = (n(best["hero"]), b, m) if b > m else (n(mine["hero"]), m, b)
+            out.append(f"{who} wins more fights in {label}: {x:.0f}% vs {y:.0f}%.")
+    bf, mf = best.get("lobby_fx"), mine.get("lobby_fx")
+    if bf is not None and mf is not None and abs(bf - mf) >= 0.1:
+        tribes = ", ".join(t.title() for t in sorted(set(best["tribe_fx"]) | set(mine["tribe_fx"])))
+        better = n(best["hero"]) if bf < mf else n(mine["hero"])
+        out.append(f"This lobby's tribes ({tribes}) suit {better} better: {n(best['hero'])} {bf:+.2f} places, "
+                   f"{n(mine['hero'])} {mf:+.2f} places vs their usual average.")
+    if best.get("power"):
+        out.append(f"{n(best['hero'])}'s hero power, {best['power']}: {best['power_text'] or ''}".strip())
+    return out
+
+
 def game_analysis(g: dict, bracket: int) -> dict:
     hm, cm = meta.heroes(bracket), meta.cards(bracket)
+    from . import lobby
+    from . import version as V
+    db = V.card_db(g.get("build") or V.current_bg_meta_build())
     out: dict = {"bracket": bracket, "placement": g.get("placement")}
 
-    # ---- hero pick (meta)
+    # ---- hero pick (meta): only relevant at the start, so it comes with the reasons
     offered = []
     for h in g.get("hero_offers") or []:
         m = hm.get(h)
         offered.append({"hero": h, "avg": m["avg"] if m and m["n"] >= 100 else None, "n": m["n"] if m else 0})
     known = [o for o in offered if o["avg"] is not None]
     picked = next((o for o in offered if norm_hero(o["hero"]) == norm_hero(g.get("hero"))), None)
+    tribes = lobby_tribes(g, db)
+    out["lobby_tribes"] = tribes
     if picked and picked["avg"] is not None and len(known) >= 2:
         best = min(known, key=lambda o: o["avg"])
         s_p, s_b = Stat(picked["avg"], picked["n"]), Stat(best["avg"], best["n"])
+        prof = {o["hero"]: hero_profile(o["hero"], hm, db, tribes) for o in offered}
         out["hero_pick"] = {"offered": offered, "picked_avg": picked["avg"], "best": best["hero"],
                             "best_avg": best["avg"], "loss": round(picked["avg"] - best["avg"], 2),
-                            "clear": advice.clearly_better(s_p, s_b), "noise": round(advice.noise(s_p, s_b), 2)}
+                            "clear": advice.clearly_better(s_p, s_b), "noise": round(advice.noise(s_p, s_b), 2),
+                            "profiles": prof,
+                            "why": hero_reasons(prof[best["hero"]], prof[picked["hero"]], db)
+                            if best["hero"] != picked["hero"] else []}
+
+    # ---- the lobby: every opponent board you fought, vs the average for their hero
+    out["lobby"] = lobby.fights(g, hm)
 
     # ---- tempo
     reach = {}
@@ -190,21 +256,7 @@ def improve_report(games: list[dict]) -> dict:
                           "loss": r["a"]["hero_pick"]["loss"]} for r in worst],
         })
 
-    # 2. Discover / triple / Dark Gift picks (meta, direct estimate; correlational per card)
-    pk = [r for r in rows if r["a"]["picks"]]
-    if pk:
-        per_game = [r["a"]["pick_loss"] for r in pk]
-        allp = [p | {"file": r["file"]} for r in pk for p in r["a"]["picks"]]
-        big = sorted([p for p in allp if p.get("clear")], key=lambda p: -p["loss"])
-        habits.append({
-            "id": "picks", "evidence": "meta", "cost": round(st.mean(per_game) / 3, 2), "n": len(allp),
-            "title": "Discover / triple / Dark Gift picks",
-            "finding": f"{len(big)} of {len(allp)} picks were clearly worse than another option offered that fit "
-                       f"your build as well (≥0.25 places, beyond chance, at your MMR on that turn).",
-            "detail": "Card stats are correlations (strong players pick strong cards), so the cost is shown at ⅓ weight.",
-            "advice": "Before picking, check the option that wins most on that turn; the game page shows each option's number.",
-            "examples": big[:3],
-        })
+    # (Discover / triple / Dark Gift picks: card averages are context only, see coach_report card_notes)
 
     # 3. board strength vs same hero, by phase (meta comparison + your own outcome split)
     for ph, label in (("early", "rounds 1–5"), ("mid", "rounds 6–9"), ("late", "rounds 10+")):
@@ -320,52 +372,48 @@ def stats_table(rows: list[dict]) -> list[dict]:
 
 def coach_report(games: list[dict], recent: int = 20) -> dict:
     """Decisions to learn from (concrete, with maths) first; your stats as context second."""
-    from .decisions import all_decisions
+    from .decisions import all_decisions, card_notes
     base = improve_report(games)
     bracket = base["bracket"]
     games = sorted([g for g in games if g.get("placement") and g.get("turns")], key=lambda g: g.get("start") or "")
     rows = [{"file": g["file"], "start": g.get("start"), "hero": g.get("hero"), "placement": g["placement"],
              "a": game_analysis(g, bracket), "g": g} for g in games]
-    decisions = []
+    decisions, notes = [], []
     for r in rows[-recent:]:
-        for d in all_decisions(r["g"], bracket, r["a"]["strength"]):
-            decisions.append({**d, "file": r["file"], "start": r["start"], "hero": r["hero"], "placement": r["placement"]})
+        tag = {"file": r["file"], "start": r["start"], "hero": r["hero"], "placement": r["placement"]}
+        for d in all_decisions(r["g"], bracket, r["a"]["strength"], r["a"]["lobby"]):
+            decisions.append({**d, **tag})
         hp = r["a"].get("hero_pick")
         if hp and hp.get("clear"):
-            decisions.append({"kind": "hero", "round": 0, "file": r["file"], "start": r["start"], "hero": r["hero"],
-                              "placement": r["placement"], "you": r["hero"], "you_val": hp["picked_avg"],
+            decisions.append({"kind": "hero", "round": 0, **tag, "you": r["hero"], "you_val": hp["picked_avg"],
                               "better": hp["best"], "better_val": hp["best_avg"], "diff": hp["loss"],
+                              "why": hp.get("why") or [],
                               "calc": f"At your MMR: your hero averages {hp['picked_avg']}, the best offered "
                                       f"averages {hp['best_avg']}: {hp['loss']:.2f} places better (chance alone "
                                       f"could explain up to {hp['noise']})."})
-        for p in r["a"]["picks"]:
-            if p.get("clear"):
-                decisions.append({"kind": "pick", "round": p["round"], "file": r["file"], "start": r["start"],
-                                  "hero": r["hero"], "placement": r["placement"], "you": p["picked"],
-                                  "you_val": p["picked_avg"], "better": p["best"], "better_val": p["best_avg"],
-                                  "diff": p["loss"], "pick_kind": p["kind"],
-                                  "picked_fit": p.get("picked_fit"), "best_fit": p.get("best_fit"),
-                                  "calc": f"{p['kind'].replace('_', ' ').title()} on round {p['round']} at your MMR: "
-                                          f"your pick {p['picked_avg']}, the other option {p['best_avg']}: "
-                                          f"{p['loss']:.2f} places better (chance alone could explain up to "
-                                          f"{p['noise']}; {p['picked_n']:,} and {p['best_n']:,} games)."
-                                          + (f" You had {p['hp']} HP, so only options adding at least as much to "
-                                             f"your board right now were compared." if p.get("low_hp") else "")})
+        # card averages: context, not moments (they can't see your situation)
+        notes += [{**d, **tag} for d in card_notes(r["g"], bracket)]
+        notes += [{"kind": "pick", "round": p["round"], **tag, "you": p["picked"], "you_val": p["picked_avg"],
+                   "better": p["best"], "better_val": p["best_avg"], "diff": p["loss"], "pick_kind": p["kind"],
+                   "picked_fit": p.get("picked_fit"), "best_fit": p.get("best_fit"),
+                   "calc": f"Average placement at your MMR when taken on round {p['round']}: your pick "
+                           f"{p['picked_avg']} ({p['picked_n']:,} games), the other {p['best_avg']} "
+                           f"({p['best_n']:,} games); chance alone could explain up to {p['noise']}."}
+                  for p in r["a"]["picks"] if p.get("clear")]
 
     def weight(d):  # comparable "size" of each moment
         if d["kind"] == "fight":
-            return (d.get("damage") or 0) / 10 * (1 - min(d.get("ratio") or 1, 1))
-        if d["kind"] == "buy" and d.get("sim"):
-            g = d["sim"]["gain"]
-            return (d.get("diff") or 0) * (0.3 if g <= 3 else 1) + max(0.0, g) / 100
+            return (d.get("damage") or 0) / 10 * (1 - min(d.get("ratio") or 1, 1)) + (0.2 if d.get("highroll") else 0)
+        if d["kind"] in ("counter", "position"):
+            return (d.get("gain") or 0) / 100
         return d.get("diff") or 0
     decisions.sort(key=weight, reverse=True)
+    notes.sort(key=lambda d: -(d.get("diff") or 0))
 
     # which kind of decision shows up most in your recent games
-    kinds = {"buy": "Buys: an affordable, better-performing card was in the shop",
-             "pick": "Discover / triple / Dark Gift picks", "hero": "Hero choice",
-             "fight": "Fights lost with a board well below the same-hero average",
-             "level": "Leveling while behind and low on HP",
+    kinds = {"counter": "A different buy or skipping a level would have won a fight you lost (simulated, your shop that turn)",
+             "fight": "Fights lost with a weak board, or to a highrolling opponent",
+             "hero": "Hero choice", "level": "Leveling while behind and low on HP",
              "position": "Minion order: another order of the same minions won clearly more often (simulated)"}
     n_recent = len(rows[-recent:]) or 1
     summary = []
@@ -377,5 +425,5 @@ def coach_report(games: list[dict], recent: int = 20) -> dict:
     summary.sort(key=lambda x: -x["total"])
     return {**{k: base[k] for k in ("games", "mmr", "bracket", "bracket_mmr", "meta_updated", "meta_games",
                                     "avg_placement", "trend")},
-            "recent_games": n_recent, "decisions": decisions[:30], "decision_summary": summary,
+            "recent_games": n_recent, "decisions": decisions[:30], "decision_summary": summary, "card_notes": notes[:15],
             "stats": stats_table(rows)}

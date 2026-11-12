@@ -20,6 +20,7 @@ from .live import LiveWatcher
 
 STATIC = Path(__file__).parent / "static"
 PORT = 8765
+STALE_ROUNDS = 3  # live odds only against a board you saw at most this many rounds ago
 
 
 # ------------------------------------------------------------------ live broadcast
@@ -30,6 +31,55 @@ class Hub:
         self.last_status: dict = {}
         self.recent: list[tuple[str, dict]] = []  # events of the current game (for late joiners)
         self.watcher: LiveWatcher | None = None
+        self.next_opp: dict | None = None  # who you fight next + the last board you saw them with
+        self._odds_gen = 0                  # newest odds request wins (debounce)
+
+    def _matchup(self, data: dict, bracket: int) -> None:
+        """Next opponent: how their last board compared with the average for their hero."""
+        from . import lobby, meta
+        last = data.get("last_seen")
+        if last:
+            hm = meta.heroes(bracket)
+            ref = lobby.hero_average(hm, last.get("hero"), last["round"])
+            now = lobby.hero_average(hm, last.get("hero"), data.get("round") or last["round"])
+            last["ratio"] = round(last["stats"] / ref, 2) if ref else None
+            last["highroll"] = bool(last["ratio"] and last["ratio"] >= lobby.HIGHROLL)
+            last["kw_text"] = lobby.describe_kw(last.get("kw") or {})
+            # their board now, if it grew like an average player's on that hero since you saw it
+            last["projected"] = round(last["stats"] * now / ref) if ref and now and data.get("round", 0) > last["round"] else None
+        self.next_opp = data
+        self._schedule_odds(data.get("my_board"))
+
+    def _schedule_odds(self, my_board: list | None, delay: float = 1.0) -> None:
+        """Simulate your current board against their last-seen board, a moment after your board
+        stops changing (they will have grown since: a rough guide, labelled as such)."""
+        from . import combat_sim
+        opp = self.next_opp
+        if not opp or not opp.get("last_seen") or my_board is None or not combat_sim.available():
+            return
+        if (opp.get("round") or 0) - opp["last_seen"]["round"] > STALE_ROUNDS:
+            return  # a board from many rounds ago says nothing about their board now
+        self._odds_gen += 1
+        gen = self._odds_gen
+        threading.Timer(delay, self._run_odds, args=(gen, opp, my_board)).start()
+
+    def _run_odds(self, gen: int, opp: dict, my_board: list) -> None:
+        if gen != self._odds_gen:
+            return  # your board changed again: a newer request is coming
+        from . import combat_sim
+        last = opp["last_seen"]
+        fight = {"my_board": my_board, "opp_board": last["board"], "opp_hero": last.get("hero"),
+                 "round": opp.get("round"), "hp_before": None}
+        try:
+            r = combat_sim.simulate({"x": combat_sim.build_battle(fight, opp.get("my_hero"), opp.get("my_tier") or 3,
+                                                                  sims=500)}).get("x") or {}
+        except Exception as e:
+            health.record_error("live_odds", e)
+            return
+        if gen == self._odds_gen and r.get("win") is not None:
+            self.emit("next_opponent_odds", {"round": opp.get("round"), "opp_hero": opp.get("opp_hero"),
+                                             "seen_round": last["round"], "win": r["win"], "tie": r["tie"],
+                                             "loss": r["loss"]})
 
     def _advise(self, data: dict, bracket: int) -> None:
         """Live pick advice with the same rules as the post-game review (advice.py):
@@ -76,6 +126,13 @@ class Hub:
             b = live_bracket()
             if kind == "offers":
                 self._advise(data, b)
+            if kind == "next_opponent":
+                self._matchup(data, b)
+            if kind in ("turn_start", "action") and self.next_opp and data.get("board_full") is not None:
+                if data.get("round") != self.next_opp.get("round"):
+                    self.next_opp = None  # a new round: wait for the game to announce the next opponent
+                elif kind == "action" and data.get("type") in ("SELL", "PLAY", "MOVE", "CAST", "CHOICE"):
+                    self._schedule_odds(data["board_full"])  # your board changed: re-check the matchup
             if kind in ("turn_start", "action", "combat") and data.get("hero"):
                 h = meta.heroes(b).get(data["hero"])
                 rnd = data.get("round")
@@ -425,10 +482,11 @@ class Handler(BaseHTTPRequestHandler):
             g["names"] = pipeline.card_names(g, db)
             g["screenshots"] = screenshots.for_game(g)
             try:
-                from .decisions import all_decisions
+                from .decisions import all_decisions, card_notes
                 b = my_bracket()
                 g["coach"] = analysis.game_analysis(g, b)
-                g["coach"]["decisions"] = all_decisions(g, b, g["coach"]["strength"])
+                g["coach"]["decisions"] = all_decisions(g, b, g["coach"]["strength"], g["coach"]["lobby"])
+                g["coach"]["card_notes"] = card_notes(g, b)
                 g["names"].update(pipeline.card_names(g["coach"], db))
             except Exception as e:  # meta offline etc. must not break the page
                 g["coach_error"] = health.record_error("coach", e, game=name)["error"]

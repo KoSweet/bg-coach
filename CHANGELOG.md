@@ -2,6 +2,43 @@
 
 All notable changes. Versions follow [semantic versioning](https://semver.org/).
 
+## [0.3.0] - 2026-11-12
+
+Coaching that reads the lobby, like a coach watching over your shoulder.
+
+### Added
+- **Counter lines (simulated):** for a fight you lost, the coach tries what you could actually have
+  done that turn with minions still in your shop when the turn ended: buy one *instead of* a minion
+  you bought, *skip the level-up* and buy one, or use spare gold (selling your weakest minion if 1–2
+  gold short). It shows a line when it clearly changes the fight (e.g. "skip the 5-gold level-up, buy
+  Tarecgosa: 0% → 42% win"), marked **risky** when it costs a tier or total stats. If nothing in the
+  shop wins the fight, it says so: the fight was decided earlier.
+- **Highrollers:** every opponent board you fought is compared with the average for their hero on that
+  round; boards at 1.5× or more are flagged. Fights show their board, keywords, and whether you had
+  seen that player before. A **Lobby** panel lists every opponent's fights, final place, tier and triples.
+- **Next opponent, live:** during the shop phase the overlay and Live tab show who you fight next
+  (tier, health, triples), the last board you saw from them vs their hero's average, and, with the
+  simulator installed, your current board's odds against it, updated as you change your board.
+- **Hero pick, explained:** the start-of-game moment says why the other hero was better: top-4 rate,
+  early vs late fight win rate, how this lobby's tribes suit each hero, and the hero power.
+- Parser records the leaderboard every round, the shop left at the end of each turn, and the next
+  opponent. Saved games are re-parsed once automatically after an update (parser version).
+
+### Changed
+- Card averages are no longer "moments to review": they can't see your situation (an economy card
+  while losing, a plan). They're listed under **Card numbers** as context, with a note when the card
+  you took has a situational payoff (e.g. Tortollan Blue Shell sells for 5 after a lost fight).
+- "What to work on" ranks counter lines, highroller/weak-board fights, minion order, risky level-ups
+  and clear hero picks.
+
+### Fixed
+- A fight could show the simulator's odds even when the simulator failed to reproduce that fight
+  (e.g. "Bob's Buddy 100% loss" next to "simulated 47% win"). Unreproduced fights now say so instead.
+
+### Docs
+- README: fair-play section (log reading only, no automation or game-file changes) and asset notice;
+  `NOTICE` file; credit line in the app. Card art stays © Blizzard and isn't in the repository.
+
 ## [0.2.0] - 2026-11-12
 
 ### Improved suggestions
@@ -50,5 +87,6 @@ First public release.
   combat simulator for minion order and buy what-ifs (rounds 1–10).
 - Windows (no console window, Desktop shortcut) and macOS (`bg-coach.app`) launchers.
 
+[0.3.0]: https://github.com/KoSweet/bg-coach/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/KoSweet/bg-coach/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/KoSweet/bg-coach/releases/tag/v0.1.0

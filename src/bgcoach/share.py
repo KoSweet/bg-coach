@@ -14,7 +14,7 @@ from pathlib import Path
 
 from .paths import REPO
 
-INCLUDE_FILES = ["README.md", "LICENSE", "CHANGELOG.md", "pyproject.toml", "uv.lock", ".gitignore", "bg-coach.vbs", "bg-coach.bat",
+INCLUDE_FILES = ["README.md", "LICENSE", "NOTICE", "CHANGELOG.md", "pyproject.toml", "uv.lock", ".gitignore", "bg-coach.vbs", "bg-coach.bat",
                  "bg-coach-debug.bat", "bg-coach-test.bat", "mac/setup.command", "sim/run.js", "sim/package.json",
                  "sim/package-lock.json", "sim/test_battles.jsonl", ".claude/commands/review-session.md"]
 INCLUDE_DIRS = ["src", "tests"]

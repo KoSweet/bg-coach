@@ -70,3 +70,28 @@ def test_fixture_two_hp_buy_is_not_second_guessed(fixture_game, online):
     assert not [d for d in ds if d["round"] == 11 and d["better"] == "BG24_715"]  # Patient Scout (1/1)
     for d in ds:  # every remaining suggestion is beyond chance and, at low HP, no weaker on the board now
         assert d["diff"] > d["noise"] and d["diff"] >= advice.MIN_DIFF
+
+
+def test_next_opponent_matchup(monkeypatch):
+    from bgcoach import combat_sim, meta, web
+
+    class FakeHeroes:
+        def get(self, hero):
+            return {"warband": {4: 20.0, 6: 40.0, 12: 400.0}}
+
+    monkeypatch.setattr(meta, "heroes", lambda b: FakeHeroes())
+    monkeypatch.setattr(combat_sim, "available", lambda: True)
+    started = []
+    monkeypatch.setattr(web.threading, "Timer", lambda *a, **k: type("T", (), {"start": lambda s: started.append(a)})())
+    hub = web.Hub()
+    d = {"round": 6, "last_seen": {"round": 4, "stats": 40, "kw": {"DIVINE_SHIELD": 2}, "board": [], "hero": "H"},
+         "my_board": [], "my_stats": 30}
+    hub._matchup(d, 100)
+    last = d["last_seen"]
+    assert last["ratio"] == 2.0 and last["highroll"]           # 40 vs 20 average for their hero on round 4
+    assert last["projected"] == 80                              # grew like average: 40 × 40/20
+    assert "2 divine shield" in last["kw_text"] and len(started) == 1
+    stale = {"round": 12, "last_seen": {"round": 4, "stats": 40, "kw": {}, "board": [], "hero": "H"}, "my_board": []}
+    hub._matchup(stale, 100)
+    assert len(started) == 1                                    # 8 rounds old: no simulation against it
+    assert stale["last_seen"]["projected"] == 800

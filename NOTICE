@@ -1,0 +1,11 @@
+bg-coach
+
+This licence covers the bg-coach source code only. Hearthstone card names, card text, card art and
+hero art are © Blizzard Entertainment, Inc., and are not part of this licence; the app downloads
+them for personal, non-commercial use. bg-coach is not affiliated with or endorsed by Blizzard
+Entertainment.
+
+Card data and art are downloaded at run time from HearthstoneJSON (https://hearthstonejson.com).
+Public Battlegrounds statistics come from Firestone (https://www.firestoneapp.com).
+The optional combat simulator (@firestone-hs/simulate-bgs-battle) is installed separately under its own licence
+and is not distributed with bg-coach.

@@ -77,6 +77,11 @@ class CardDB:
             cards = _cached_json("cards_latest.json", HSJSON_URL.format(build="latest"), max_age_h=24)
             self.build = -1
         self.by_id = {c["id"]: c for c in cards}
+        self.by_dbf = {c["dbfId"]: c for c in cards if c.get("dbfId")}
+
+    def hero_power(self, hero_id: str | None) -> dict:
+        """The hero power card of a Battlegrounds hero ({} if unknown)."""
+        return self.by_dbf.get(self.get(hero_id).get("heroPowerDbfId"), {})
 
     def get(self, card_id: str | None) -> dict:
         if not card_id:

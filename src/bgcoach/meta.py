@@ -53,6 +53,10 @@ def bracket_for(mmr: int | None) -> int:
     return best
 
 
+TRIBE_NAME = {11: "UNDEAD", 14: "MURLOC", 15: "DEMON", 17: "MECHANICAL", 18: "ELEMENTAL", 20: "BEAST",
+              23: "PIRATE", 24: "DRAGON", 43: "QUILBOAR", 92: "NAGA", 126: "NAGA"}  # Firestone's tribe codes
+
+
 class HeroMeta:
     def __init__(self, bracket: int):
         d = _fetch("hero-stats", bracket)
@@ -60,10 +64,16 @@ class HeroMeta:
         self.mmr_floor = next((p["mmr"] for p in d.get("mmrPercentiles", []) if p["percentile"] == bracket), None)
         self.heroes = {}
         for h in d["heroStats"]:
+            dist = {p["rank"]: p["percentage"] for p in h.get("placementDistribution") or []}
             self.heroes[norm_hero(h["heroCardId"])] = {
                 "avg": h["averagePosition"], "n": h["dataPoints"],
                 "warband": {w["turn"]: w["averageStats"] for w in h.get("warbandStats") or []},
                 "combat": {c["turn"]: c["winrate"] for c in h.get("combatWinrate") or [] if c["winrate"] is not None},
+                "top4": round(sum(dist.get(r, 0) for r in (1, 2, 3, 4)), 1) if dist else None,
+                "first": round(dist.get(1, 0), 1) if dist else None,
+                # how the hero's average placement moves when a tribe is in the lobby (negative = better)
+                "tribes": {TRIBE_NAME.get(t["tribe"], str(t["tribe"])): t.get("impactAveragePosition")
+                           for t in h.get("tribeStats") or [] if t.get("dataPoints", 0) >= 100},
             }
 
     def get(self, hero: str | None) -> dict | None:

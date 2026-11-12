@@ -51,7 +51,8 @@ flowchart LR
 | `meta.py` | Firestone hero/card statistics per MMR bracket, snapshotted daily |
 | `analysis.py` | Per-game coach section and the cross-game "what to work on" report |
 | `advice.py` | When an alternative is really better: fit, beyond chance, survival at low HP (all suggestions) |
-| `decisions.py` | Concrete either/or moments: buys, picks, hero, fights, positioning, levelling |
+| `decisions.py` | Moments to review: hero, fights (with the matchup), counter lines, minion order, risky levels; card numbers as context |
+| `lobby.py` | The lobby as you saw it: opponent boards vs their hero's average (highrollers), leaderboard each round |
 | `synergy.py` | How well a card fits the build at that moment |
 | `combat_sim.py`, `whatif.py`, `simcheck.py` | Combat simulator bridge, cached what-ifs, validation vs Bob's Buddy |
 | `bobsbuddy.py` | Bob's Buddy win/tie/loss odds per fight, read from HDT's log |
@@ -120,16 +121,25 @@ round". They are correlations from hundreds of thousands of games, not rules, an
 Live, the same rules mark a pick as **too close to call** when the runner-up is within chance,
 and at low HP name the option that adds the most to your board now.
 
-**Decisions** (`decisions.py`) are either/or moments:
+**Moments to review** (`decisions.py`):
 
-| Kind | Flagged when |
+| Kind | Shown when |
 |---|---|
-| Buy | another card in the *same shop* was affordable (but not both), passes the three rules above, and you didn't buy it later that turn |
-| Pick | a Discover/triple/trinket/Dark Gift option passes the three rules |
-| Hero | the best hero offered averages clearly better (rule 2) than the one you took |
-| Fight | you lost 7+ HP with a board below 90% of the average for your hero on that round, and Bob's Buddy didn't have you favoured (a loss while favoured is luck, not a decision) |
+| Hero | the best hero offered averages clearly better (rule 2) than the one you took; with the reasons: top-4 rate, early/late fight win rate, how this lobby's tribes suit each hero, the hero power |
+| Fight / Highroller | you lost 7+ HP with a board below 90% of the average for your hero, *or* to an opponent whose board was ≥ 1.5× the average for *their* hero ("highroller"), and Bob's Buddy didn't have you favoured. Shows their board, keywords, and when you had seen that player before |
+| Counter | for a lost fight the simulator reproduces: a line with gold you had that turn and a minion still in your shop at the end of it (buy it *instead of* one you bought, *skip the level-up*, or spare gold + selling your weakest) changes the fight by ≥ 15 points (win + half the ties). Marked risky when it costs a tier or total stats. When no line works, the fight says so: it was decided earlier |
 | Position | the simulator finds an order of the *same minions* that wins ≥ 10 points more often |
 | Level | you levelled at 15 HP or less while your board was already below 85% of the average, then lost that fight |
+
+**Card numbers** (context, not moments): buys and picks where another card that fit as well
+averaged clearly better (rules 1–3). Averages can't see your situation (an economy card while you're
+losing, a plan for next turn), so they never rank as habits; when the card you took has a
+situational payoff the note says so.
+
+**The lobby** (`lobby.py`) uses only what the game showed you: boards from your own fights and the
+leaderboard (tier, health, triples) recorded every round. Live, the game announces your next
+opponent during the shop phase; the app shows their last board you saw and, with the simulator,
+your current board's odds against it (a floor for them: they've grown since).
 
 ### Synergy
 

@@ -13,7 +13,7 @@ from pathlib import Path
 from . import version as V
 from .health import game_issues, record_error
 from .paths import DATA, HDT_DIR
-from .replay import Game, Replay, norm_hero
+from .replay import PARSER_VERSION, Game, Replay, norm_hero
 
 RAW = DATA / "raw"
 GAMES_DIR = DATA / "games"
@@ -182,7 +182,7 @@ def import_all(force: bool = False, progress: Callable[[str], None] = print) -> 
     logs = archived_logs()
     stats = collections.Counter()
     for i, p in enumerate(logs, 1):
-        sig = [p.stat().st_size, int(p.stat().st_mtime)]
+        sig = [p.stat().st_size, int(p.stat().st_mtime), PARSER_VERSION]  # new parser → parse again
         if done.get(str(p)) == sig:
             stats["skipped"] += 1
             continue

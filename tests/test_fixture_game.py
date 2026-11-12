@@ -115,3 +115,31 @@ def test_partial_copy_never_replaces_the_full_game(tmp_path, monkeypatch, fixtur
             p = pipeline.save_game(g)
         saved = json.loads(p.read_text(encoding="utf-8"))
         assert saved["complete"] and saved["placement"] == 3 and len(saved["turns"]) == 14
+
+
+def test_lobby_every_round(fixture_game):
+    # the leaderboard as the game shows it: 8 players, your own slot, tier/health/triples
+    g = fixture_game
+    r1, r14 = g.turns[0], g.turns[-1]
+    assert len(r1["lobby"]) == 8 and r1["me_lobby"] == 7
+    assert r1["lobby"]["7"]["hero"] == "BG20_HERO_242" and r1["lobby"]["7"]["tier"] == 1
+    assert r14["lobby"]["7"]["triples"] == 7 and r14["lobby"]["2"]["place"] == 1
+    assert {c["opp_lobby_id"] for c in g.combats} <= {int(k) for k in r1["lobby"]} - {7}
+
+
+def test_next_opponent_is_announced_before_each_fight():
+    seen = []
+    parse(FIXTURE_LOG, on_event=lambda k, d: seen.append(d) if k == "next_opponent" else None)
+    games = parse(FIXTURE_LOG)
+    fought = [(c["round"], c["opp_lobby_id"]) for c in games[0].combats]
+    assert [(d["round"], d["lobby_id"]) for d in seen] == fought
+
+
+def test_end_of_turn_shop_and_lobby_view(fixture_game):
+    from bgcoach import lobby
+    g = fixture_game
+    assert all(t.get("end_shop") is not None for t in g.turns)
+    assert g.turns[5]["end_shop"] and all("atk" in s for s in g.turns[5]["end_shop"])
+    import json
+    fights = lobby.fights(json.loads(json.dumps(g.to_dict(), default=str)))  # no hero averages offline
+    assert len(fights) == 14 and fights[7]["seen_before"] == {"round": 1, "stats": fights[0]["stats"]}

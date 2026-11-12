@@ -122,9 +122,14 @@ class LiveWatcher(threading.Thread):
                                round=data.get("round"), card=data.get("card"))
             data = {**data, "error_id": err["id"]}
         rp = self.rp
+        if rp is not None and rp.g is not None and kind == "next_opponent":
+            data = {**data, **self._next_opponent(rp, data["lobby_id"])}
         if rp is not None and rp.g is not None and kind in ("turn_start", "action", "combat", "offers", "choice"):
+            board = rp.board()
             data = {**data, "hero": rp.g.hero, "board_stats": sum(
-                (c.get("atk") or 0) + max(0, c.get("hp") or 0) for c in rp.board())}
+                (c.get("atk") or 0) + max(0, c.get("hp") or 0) for c in board)}
+            if kind in ("turn_start", "action"):
+                data["board_full"] = board  # lets the app re-check the next fight as your board changes
             if kind == "offers":
                 from .synergy import history_until
                 data["board_ids"] = [c["card_id"] for c in rp.board()]
@@ -133,6 +138,20 @@ class LiveWatcher(threading.Thread):
                 if t and t.get("hp") is not None:
                     data["my_hp"] = t["hp"] + (t.get("armor") or 0)
         self.emit(kind, data)
+
+    @staticmethod
+    def _next_opponent(rp, lobby_id: int) -> dict:
+        """Who you fight next, as the game shows it: leaderboard entry + the last board you saw them with."""
+        from .lobby import keywords, stats
+        lb = rp.lobby().get(str(lobby_id)) or {}
+        seen = [c for c in rp.g.combats if c.get("opp_lobby_id") == lobby_id and c.get("opp_board")]
+        last = seen[-1] if seen else None
+        board = rp.board()
+        return {"opp_hero": lb.get("hero"), "opp_tier": lb.get("tier"), "opp_hp": lb.get("hp"),
+                "opp_triples": lb.get("triples"), "opp_place": lb.get("place"),
+                "last_seen": {"round": last["round"], "stats": stats(last["opp_board"]), "kw": keywords(last["opp_board"]),
+                              "board": last["opp_board"], "hero": last.get("opp_hero")} if last else None,
+                "my_hero": rp.g.hero, "my_board": board, "my_stats": stats(board), "my_tier": rp.tier()}
 
     def _on_game(self, g):
         from .pipeline import game_file

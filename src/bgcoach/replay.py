@@ -42,6 +42,9 @@ BUTTONS = {
     "BG36_Button_DarkGift": "DARK_GIFT",
     "TB_BaconShopBob": "BOB",
 }
+# Bump when the game record gains or changes fields: `bgcoach import` (and the app) then re-parse
+# every archived log once, so older games get them too. 2 = lobby, end-of-turn shop.
+PARSER_VERSION = 2
 SHOP_TYPES = {"MINION", "BATTLEGROUND_SPELL", "SPELL"}
 KEYWORD_TAGS = ("TAUNT", "DIVINE_SHIELD", "REBORN", "WINDFURY", "VENOMOUS", "POISONOUS", "STEALTH", "CLEAVE")
 
@@ -249,6 +252,24 @@ class Replay:
         h = self._my_hero()
         return h.int("PLAYER_TECH_LEVEL", 1) if h else 1
 
+    def lobby(self) -> dict[str, dict]:
+        """The leaderboard right now (what the game shows you): lobby slot → hero, health + armor,
+        tier, triples, place. Keys are strings so the record survives a JSON round trip."""
+        best: dict[int, Entity] = {}
+        for e in self.ents.values():
+            if e.tag("CARDTYPE") != "HERO" or not e.int("PLAYER_ID") or not e.int("PLAYER_LEADERBOARD_PLACE"):
+                continue
+            pid = e.int("PLAYER_ID")
+            if pid not in best or e.id > best[pid].id:  # the newest entity is the current one
+                best[pid] = e
+        return {str(pid): {"hero": e.card_id, "hp": self._ehp(e), "tier": e.int("PLAYER_TECH_LEVEL", 1),
+                           "triples": e.int("PLAYER_TRIPLES"), "place": e.int("PLAYER_LEADERBOARD_PLACE")}
+                for pid, e in sorted(best.items())}
+
+    def my_lobby_id(self) -> int | None:
+        h = self._my_hero()
+        return h.int("PLAYER_ID") or None if h else None
+
     def _emit(self, kind: str, data: dict):
         self.on_event(kind, data)
 
@@ -441,6 +462,9 @@ class Replay:
                 self.cur_combat["won_flag"] = value == "1"
             elif tag == "PLAYER_TECH_LEVEL" and old is not None and value != old:
                 self._emit("tier", {"round": self._round(), "tier": int(value)})
+            elif tag == "NEXT_OPPONENT_PLAYER_ID" and value.isdigit() and int(value) and value != old \
+                    and self.turn % 2 == 1:  # announced during the shop phase, as the game shows it
+                self._emit("next_opponent", {"round": self._round(), "lobby_id": int(value)})
         c = self.cur_combat
         if c is not None and e.id == c.get("_opp_hero_ent") and tag == "PREDAMAGE" and value.isdigit():
             c["_pre"] = max(c.get("_pre", 0), int(value))
@@ -461,6 +485,7 @@ class Replay:
             if self.cur_turn is not None:
                 self.cur_turn["end_board"] = board
                 self.cur_turn["gold_end"] = self._gold()  # unspent gold when the shop phase ended
+                self.cur_turn["end_shop"] = self.shop()   # what you could still have bought
             hero = self._my_hero()
             self.cur_combat = {"round": self._round(), "line": self.line_no, "t": self.now.isoformat(timespec="seconds"), "hp_before": self._hp(hero),
                                "armor_before": hero.int("ARMOR") if hero else 0,
@@ -473,7 +498,8 @@ class Replay:
             hero = self._my_hero()
             self.cur_turn = {"round": self._round(), "line": self.line_no, "start": self.now.isoformat(timespec="seconds"),
                              "tier": self.tier(), "hp": self._hp(hero), "armor": hero.int("ARMOR") if hero else 0,
-                             "gold": None, "shop": None, "actions": [], "end_board": None}
+                             "gold": None, "shop": None, "actions": [], "end_board": None,
+                             "lobby": self.lobby(), "me_lobby": self.my_lobby_id()}
             g.turns.append(self.cur_turn)
             self.last_shop = None
             self._emit("round", self.cur_turn)

@@ -143,6 +143,7 @@ details.mo summary:hover{background:var(--panel2)}
         attached to that round automatically. Report it after the game from the game's page (📷 + ⚑).</div>
     </div>
     <div id="liveAdvice"></div>
+    <div id="liveNext"></div>
     <div class="card"><h3>This game</h3><div class="feed" id="liveFeed"><span class="muted">Waiting for a game…</span></div></div>
   </section>
 
@@ -174,6 +175,7 @@ details.mo summary:hover{background:var(--panel2)}
     <div class="card"><h3>Games with data issues</h3><div id="issueList"></div></div>
     <div class="card hide" id="jobCard"><h3>Job output</h3><pre id="jobLog"></pre></div>
   </section>
+  <footer class="muted" style="font-size:11px;text-align:center;margin:28px 0 8px">bg-coach is a free fan project, not affiliated with Blizzard Entertainment. Card names and art © Blizzard Entertainment, Inc., via <a href="https://hearthstonejson.com" target="_blank" rel="noopener">HearthstoneJSON</a>. Statistics: <a href="https://www.firestoneapp.com" target="_blank" rel="noopener">Firestone</a>.</footer>
 </main>
 <div class="modal" id="flagModal"><div class="box">
   <h3 style="margin-top:0">⚑ Report a problem <span class="muted" id="flagWhere"></span></h3>
@@ -393,14 +395,26 @@ function momentParts(d){
     return [k, `took ${tl(d.you)} ${num(d.you_val)} · ${tl(d.better)} ${num(d.better_val,true)} fit as well`, `−${d.diff.toFixed(2)}`, det];
   }
   if (d.kind==="hero"){
+    (d.why||[]).forEach(w => det.unshift(`💡 ${esc(w)}`));
     return ["Hero", `took ${tl(d.you)} ${num(d.you_val)} · best offered ${tl(d.better)} ${num(d.better_val,true)}`, `−${d.diff.toFixed(2)}`, det];
   }
   if (d.kind==="fight"){
     const bb = d.bb ? ` · Bob's Buddy ${Math.round(d.bb.loss)}% loss` : "";
+    const them = d.opp_stats!=null ? ` · their board ${d.opp_stats}${d.opp_ratio?` (${d.opp_ratio.toFixed(1)}× avg)`:""}` : "";
     det.unshift(`That turn: ${esc(d.turn||"")}`);
-    if (d.sim) det.push(`🎯 Simulated: ${Math.round(d.sim.win)}% win · ${Math.round(d.sim.tie)}% tie · ${Math.round(d.sim.loss)}% loss`);
-    return ["Fight", `lost to ${tl(d.opp)} · board <b class="bad">${Math.round(d.ratio*100)}%</b> of same-hero avg${bb}`, `−${d.damage} HP`, det];
+    if (d.sim) det.push(`🎯 Simulated (matches the real fight): ${Math.round(d.sim.win)}% win · ${Math.round(d.sim.tie)}% tie · ${Math.round(d.sim.loss)}% loss`);
+    if (d.sim_untrusted) det.push(`🎯 Not simulated: the simulator couldn't reproduce this fight (${esc(d.sim_untrusted)}), e.g. a hero power or trinket it doesn't know.`);
+    if (d.no_counter) det.push(`🔍 Nothing in your shop at the end of that turn wins this fight (${d.no_counter.tried} lines simulated; best: ${nm(d.no_counter.best_buy)}, still ${Math.round(d.no_counter.best.loss)}% loss). It was decided before this turn: look at the rounds where your board fell behind.`);
+    if (d.has_counter) det.push(`➡ There was a line that changes this fight: see the next moment.`);
+    const label = d.highroll ? "Highroller" : "Fight";
+    return [label, `lost to ${tl(d.opp)}${them} · yours <b class="${d.ratio<0.9?'bad':''}">${Math.round(d.ratio*100)}%</b> of avg${bb}`, `−${d.damage} HP`, det];
   }
+  if (d.kind==="counter"){
+    if (d.board) det.push(`Board for that fight: ${(d.board||[]).map(icon).join("")}`);
+    const risky = (d.risky||[]).length ? ` <span class="tag warn">risky</span>` : "";
+    return ["Counter", `${esc(d.what)}${d.buy_kw&&d.buy_kw.length?` <span class="muted">(${esc(d.buy_kw.join(", "))})</span>`:""} ${icon(d.buy)}: win <b>${Math.round(d.base.win)}%</b> → ${num(Math.round(d.new.win)+"%",true)}, loss ${Math.round(d.base.loss)}% → ${Math.round(d.new.loss)}%${risky}`, `+${Math.round(d.gain)}`, det];
+  }
+  if (d.kind==="buy" && d.situational) det.unshift(`🤔 ${esc(d.situational)}`);
   if (d.kind==="position"){
     return ["Order", `same minions, other order: <b>${Math.round(d.base_win)}%</b> → ${num(Math.round(d.best_win)+"%",true)} win
       <div class="ord">${(d.actual||[]).map(icon).join("")}<span class="muted" style="margin:0 8px">→</span>${(d.order||[]).map(icon).join("")}</div>`, `+${Math.round(d.gain)}%`, det];
@@ -442,16 +456,14 @@ function coachHtml(g){
   const col = v => v==null ? "" : v>=1 ? "good" : v>=0.8 ? "warn" : "bad";
   const heroV = !hp ? "" : hp.loss<=0.05 ? `<span class="good">✓ best hero offered</span>` : `${tl(g.hero)} ${hp.picked_avg} vs ${tl(hp.best)} <b class="good">${hp.best_avg}</b>`;
   const luck = c.luck && c.luck.fights_with_odds ? `🎲 ${c.luck.unlucky_losses.length} · 🍀 ${c.luck.lucky_wins.length}` : "–";
-  // one merged, chronological list: weaker picks + every decision moment
-  // only differences beyond chance, among options that fit as well (and help the next fight at low HP)
-  const chance = p => ` That's ${p.loss.toFixed(2)} places; chance alone could explain up to ${p.noise}.`;
+  // moments: the hero pick (only at the start, with reasons), fights with the matchup, lines that would
+  // have changed a lost fight, minion order, risky levels. Card averages are context (cardNotesHtml).
+  const heroM = hp && hp.clear ? [{kind:"hero", round:0, you:g.hero, you_val:hp.picked_avg, better:hp.best, better_val:hp.best_avg, diff:hp.loss,
+     why: hp.why||[], calc:`Average placement at your MMR (top ${c.bracket}%). Chance alone could explain up to ${hp.noise} places.`}] : [];
   const picks = (c.picks||[]).filter(p=>p.clear).map(p=>({kind:"pick", pick_kind:p.kind, round:p.round, you:p.picked, you_val:p.picked_avg,
      better:p.best, better_val:p.best_avg, diff:p.loss, picked_fit:p.picked_fit, best_fit:p.best_fit,
-     calc:`Average placement at your MMR when taken on round ${p.round}: ${nm(p.picked)} ${p.picked_avg} (${(p.picked_n||0).toLocaleString()} games), ${nm(p.best)} ${p.best_avg} (${(p.best_n||0).toLocaleString()} games).`
-       + chance(p) + (p.low_hp ? ` You had ${p.hp} HP, so only options adding at least as much to your board right now were compared.` : "")}));
-  const heroM = hp && hp.clear ? [{kind:"hero", round:0, you:g.hero, you_val:hp.picked_avg, better:hp.best, better_val:hp.best_avg, diff:hp.loss,
-     calc:`Average placement at your MMR (top ${c.bracket}%). Chance alone could explain up to ${hp.noise} places.`}] : [];
-  const moments = [...heroM, ...picks, ...(c.decisions||[])].sort((a,b)=>a.round-b.round);
+     calc:`Average placement at your MMR when taken on round ${p.round}: ${nm(p.picked)} ${p.picked_avg} (${(p.picked_n||0).toLocaleString()} games), ${nm(p.best)} ${p.best_avg} (${(p.best_n||0).toLocaleString()} games); chance alone could explain up to ${p.noise}.`}));
+  const moments = [...heroM, ...(c.decisions||[])].sort((a,b)=>a.round-b.round);
   return `<div class="card"><h3>Coach</h3>
     <div class="verdicts">
       <div><span>Hero</span>${heroV||"–"}</div>
@@ -462,7 +474,29 @@ function coachHtml(g){
     ${strengthBars(c.strength)}
     <h4 style="margin:14px 0 4px">Moments to review <span class="muted" style="font-weight:400">(${moments.length}; click one for details)</span></h4>
     ${moments.length ? moments.map(d=>momentHtml(d,false)).join("") : `<div class="muted">Nothing stands out in this game.</div>`}
+    ${lobbyHtml(c.lobby, g)}
+    ${cardNotesHtml([...(c.card_notes||[]), ...picks], false)}
   </div>`;
+}
+function lobbyHtml(fights, g){
+  // every opponent you fought: their board vs the average for their hero that round
+  if (!fights || !fights.length) return "";
+  const by = {};
+  fights.forEach(f => { const k = f.lobby_id||f.hero; const o = (by[k] = by[k] || {hero:null, seen:[]}); o.seen.push(f); o.hero = o.hero || f.hero; });
+  const fin = {}; const last = (g.turns||[]).slice(-1)[0]; Object.entries((last&&last.lobby)||{}).forEach(([k,v])=>fin[k]=v);
+  const rows = Object.entries(by).map(([k, o]) => {
+    const lb = fin[k]; const hi = o.seen.some(f=>f.highroll);
+    o.hero = (lb && lb.hero) || o.hero;  // the leaderboard knows every player's hero, even before a fight
+    const cells = o.seen.map(f => `<span title="${esc(Object.entries(f.kw||{}).map(([a,b])=>b+' '+a.toLowerCase().replace(/_/g,' ')).join(', ')||'no keywords')}" style="margin-right:10px;white-space:nowrap">R${f.round} <b class="${f.highroll?'bad':''}">${f.stats}</b>${f.ratio?` <span class="muted">${f.ratio.toFixed(1)}×</span>`:""} <span class="${f.result==='LOSS'?'bad':f.result==='WIN'?'good':'muted'}">${(f.result||'?')[0]}</span></span>`).join("");
+    return `<tr><td>${icon(o.hero)} ${nm(o.hero)}${hi?' <span class="tag err">highroll</span>':''}</td><td class="muted">${lb?`#${lb.place} · T${lb.tier} · ${lb.triples} triples`:""}</td><td>${cells}</td></tr>`;
+  }).join("");
+  return `<details style="margin-top:10px"><summary><b>Lobby</b> <span class="muted">(${Object.keys(by).length} opponents: their board when you fought them, × the average for their hero; hover for keywords)</span></summary>
+    <table style="margin-top:6px"><thead><tr><th>Opponent</th><th>Final</th><th>Fights (stats · × hero average · W/L/T)</th></tr></thead><tbody>${rows}</tbody></table></details>`;
+}
+function cardNotesHtml(notes, withGame){
+  if (!notes || !notes.length) return "";
+  return `<details style="margin-top:10px"><summary><b>Card numbers</b> <span class="muted">(${notes.length}; context, not advice: averages can't see your situation)</span></summary>
+    ${notes.map(d=>momentHtml(d, withGame)).join("")}</details>`;
 }
 function trendHtml(r){
   const t = (r.trend||[]).filter(x=>x.mid!=null); if (t.length < 4) return "";
@@ -486,10 +520,11 @@ async function loadImprove(){
     <div class="grid" style="margin-bottom:14px">${stats.map(([k,v])=>`<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("")}</div>
     ${top?`<div class="card focus"><h3>What to work on (last ${r.recent_games} games)</h3>
       ${r.decision_summary.map(s=>`<div class="row"><b style="min-width:42px">${s.count}×</b>${esc(s.label)} <span class="muted">(${s.per_game} per game)</span></div>`).join("")}
-      <div class="muted" style="margin-top:6px;font-size:12px">Ordered by total size: places for buys/picks/heroes, HP lost × how far behind for fights.</div></div>`:""}
+      <div class="muted" style="margin-top:6px;font-size:12px">Ordered by total size: simulated win % for counters and minion order, HP lost × how far behind for fights, places for heroes.</div></div>`:""}
     <div class="card"><h3>Decisions to learn from: biggest first</h3>
       ${r.decisions.map(d=>momentHtml(d,true)).join("") || '<span class="muted">Nothing stands out in your recent games.</span>'}
-      <div class="muted" style="font-size:12px;margin-top:6px">Numbers = average placement of players at your MMR who played that card / hero on that round (lower is better). They're correlations from ${(r.meta_games||0).toLocaleString()} games, not rules: you may have had a plan the shop doesn't show. Buys are only listed when you couldn't afford both cards and didn't buy the better one later that turn; cards that break your tribe synergy are never suggested. Only differences beyond chance are listed (each number says how many games it rests on), and at 15 HP or less only cards that add at least as much to your board right now.</div></div>
+      <div class="muted" style="font-size:12px;margin-top:6px">Counters and minion orders are simulated on the real fight, only for fights the simulator reproduces (checked against Bob's Buddy), and only with minions that were in your shop when the turn ended. "Highroller" = their board was at least 1.5× the average for their hero on that round. Hero numbers are average placements at your MMR from ${(r.meta_games||0).toLocaleString()} games, shown with the reasons and only when the difference is beyond chance.</div>
+      ${cardNotesHtml(r.card_notes, true)}</div>
     ${trendHtml(r)}
     <div class="card"><h3>Your stats compared (context, not advice)</h3>${statsTableHtml(r.stats)}
       <div class="muted" style="font-size:12px;margin-top:6px">Medians. Top-4 vs 5th–8th shows what differs between your good and bad games; it doesn't say why (e.g. leveling late can be the right call at low HP).</div></div>`;
@@ -594,7 +629,17 @@ on("action", d => showStrength(d));
 on("action", d => { const t = live.turns.at(-1); if (t) { t.actions = t.actions||[]; t.actions.push(d);} renderLive(); });
 on("choice", d => { $("#liveAdvice").innerHTML = ""; });
 on("choice", d => { if (d.kind==="HERO_PICK") return; const t = live.turns.at(-1); if (t) t.actions.push({type:"CHOICE", ...d}); renderLive(); });
-on("combat", d => { live.combats[d.round]=d; renderLive(); });
+on("combat", d => { live.combats[d.round]=d; renderLive(); $("#liveNext").innerHTML = ""; });
+on("next_opponent", d => {
+  const l = d.last_seen;
+  const ago = l ? d.round - l.round : 0;
+  const seen = l ? `Last board you saw (round ${l.round}${ago>3?`, ${ago} rounds ago: too old to compare`:""}): <b class="${l.highroll?'bad':''}">${l.stats}</b> stats${l.ratio?`, ${l.ratio.toFixed(1)}× the average for their hero${l.highroll?' <span class="tag err">highroll</span>':''}`:""} · ${esc(l.kw_text||"")} · your board now <b>${d.my_stats}</b>`
+                 : `You haven't fought them yet.`;
+  const proj = l && l.projected ? `<div style="margin-top:4px">If they grew like an average player on their hero since then: <b>≈ ${l.projected}</b> stats now vs your <b>${d.my_stats}</b>${l.projected > 1.3*d.my_stats ? ' <span class="tag err">likely bigger</span>' : l.projected*1.3 < d.my_stats ? ' <span class="tag">likely smaller</span>' : ''}.</div>` : "";
+  $("#liveNext").innerHTML = `<div class="card"><h3>Next opponent ${icon(d.opp_hero)} ${nm(d.opp_hero)}</h3>
+    <div>Tier ${d.opp_tier} · ${d.opp_hp} HP${d.opp_triples?` · ${d.opp_triples} triples`:""} · place ${d.opp_place}</div><div style="margin-top:4px">${seen}</div>${proj}<div id="liveOdds" class="muted" style="margin-top:4px"></div></div>`;
+});
+on("next_opponent_odds", d => { const o = $("#liveOdds"); if (o) o.innerHTML = `⚔ Your board now vs that board (simulated): <b>${Math.round(d.win)}%</b> win · ${Math.round(d.tie)}% tie · ${Math.round(d.loss)}% loss. They've grown since round ${d.seen_round}, so treat it as a floor for them.`; });
 on("checks", d => { const t=$("#checkTag"); t.textContent = `✓ ${d.ok} checks` + (d.failed?` · ✗ ${d.failed} failed`:""); t.className = "tag " + (d.failed?"err":""); });
 on("check_failed", d => showError(`Self-check failed in round ${d.round}: ${d.action} recorded but "${d.expected}" did not happen`, ()=>reportFor("error="+d.error_id)));
 on("game_end", d => { $("#liveDot").classList.remove("on"); $("#liveStatus").innerHTML = `Game over: ${placeTag(d.placement)} ${nm(d.hero)} · saved`; });

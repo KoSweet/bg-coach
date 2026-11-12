@@ -17,19 +17,25 @@ It is not a bot and it doesn't play for you. It helps you see your own games mor
 ## What you get
 
 **While you play.** A small overlay sits on top of the game: the round number, whether the
-recording is healthy, a live feed of what you did, and when you pick a hero, Discover, triple
-reward or Dark Gift, how each option performs at your MMR and whether it fits your build.
+recording is healthy, and a live feed of what you did. When you pick a hero, Discover, triple
+reward or Dark Gift, it shows how each option performs at your MMR, whether it fits your build,
+and when two options are too close to call. During the shop phase it shows **who you fight next**:
+their tier, health and triples, the last board you saw from them (and whether that was a
+highroll), and, with the simulator, your current board's odds against it.
 
 **After each game.** A round-by-round timeline (shop, board, every action, every fight), plus a
-coach section:
-- **Buys and picks** compared with what else was in that exact shop or Discover and affordable.
-  An alternative is only suggested when it fits your build at least as well (a Beast player isn't
-  told to take a Pirate), when the difference is bigger than chance (every number says how many
-  games it rests on), and, when you're low on health, when it would also have helped the next fight.
-- **Fights** where your board was behind, with Bob's Buddy odds when Hearthstone Deck Tracker is
-  installed (separating bad luck from a weak board).
+coach section that thinks about the lobby, not just your cards:
+- **Counter lines** for fights you lost: what you could have done that turn with a minion still in
+  your shop. For example: *"skip the 5-gold level-up and buy Tarecgosa: 0% → 42% win, simulated
+  (risky: a tier lower next turn)"*, or *"instead of Southsea Busker, buy this venomous minion"*.
+  When nothing in your shop would have won, it says the fight was decided earlier.
+- **Highrollers**: opponents whose board was 1.5× or more the average for their hero, with what you
+  had already seen of them, plus a lobby panel with every opponent's fights.
 - **Minion order**: the same minions in another order, simulated (rounds 1–10).
-- **Hero choice**, and **risky level-ups** at low health.
+- **Hero choice**, explained: top-4 rate, early vs late strength, how this lobby's tribes suit each
+  hero, and the hero power. Plus **risky level-ups** at low health.
+- **Card numbers** (buys and picks against the averages at your MMR) as background context only,
+  because averages can't see your situation.
 
 **Across games.** What to work on first (the habits that cost you the most), and your stats
 compared with your own good and bad games and with players at your MMR, as context rather than rules.
@@ -107,6 +113,15 @@ Battlegrounds statistics from [Firestone](https://www.firestoneapp.com), and the
 from Blizzard's public card API. Reports you copy from the app have BattleTags, player names and
 your folder names removed.
 
+## Fair play
+
+bg-coach works like other trackers such as Hearthstone Deck Tracker and Firestone: it **reads the log
+file Hearthstone writes** when logging is switched on. It never changes game files, reads game
+memory, talks to the game or Blizzard's servers, or plays for you. Live, it only shows what you have
+seen yourself (your shop, your fights, the leaderboard) plus public statistics. Blizzard doesn't
+formally endorse third-party tools and forbids automation and game-file changes, which bg-coach
+doesn't do. Tournaments can set their own rules: check them before using any tracker there.
+
 ## Reporting a problem
 
 Use **Copy report** in the app (Health tab, or ⚑ on a round) and paste it into a
@@ -159,7 +174,11 @@ Card data: [HearthstoneJSON](https://hearthstonejson.com). Statistics and the co
 under its own licence and isn't part of this repository). Bob's Buddy odds and game history:
 [Hearthstone Deck Tracker](https://github.com/HearthSim/Hearthstone-Deck-Tracker).
 
-bg-coach is a fan project, not affiliated with or endorsed by Blizzard Entertainment.
-Hearthstone® is a trademark of Blizzard Entertainment, Inc.
+bg-coach is a free, non-commercial fan project, not affiliated with or endorsed by Blizzard
+Entertainment. Hearthstone® is a trademark of Blizzard Entertainment, Inc. Card names, card art and
+hero art are © Blizzard Entertainment, Inc. This repository doesn't contain card art: the app
+downloads it from HearthstoneJSON to your computer when you use it. The screenshots above show it
+under Blizzard's terms for non-commercial fan use.
 
-Licensed under the [MIT licence](LICENSE).
+The code is licensed under the [MIT licence](LICENSE). That licence covers bg-coach's own code
+only, not Blizzard's names, art or game data.
