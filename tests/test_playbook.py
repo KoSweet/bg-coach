@@ -159,3 +159,16 @@ def test_early_order_lets_a_rally_minion_lead():
     plain = fight(7, [m(3, 7), m(12, 12), m(4, 3)], [m(5, 5)])
     assert "early_order" not in [r["rule"] for r in playbook.check(game([turn(7)], [rally]), DB())]
     assert "early_order" in [r["rule"] for r in playbook.check(game([turn(7)], [plain]), DB())]
+
+
+def test_opponent_tribes_from_the_board_you_saw():
+    # the hover in game sums up their tribes; the log has no tag for it, so count their minions
+    from bgcoach import lobby
+
+    class DB:
+        def get(self, cid):
+            return {"M1": {"races": ["MURLOC"]}, "M2": {"races": ["MURLOC"]}, "B": {"races": ["BEAST"]},
+                    "MIX": {"races": ["MURLOC", "BEAST"]}}.get(cid, {})
+    board = [{"card_id": c} for c in ("M1", "M2", "MIX", "B", "NONE")]
+    assert lobby.tribes(board, DB()) == [["MURLOC", 3], ["BEAST", 2]]
+    assert lobby.describe_tribes(lobby.tribes(board, DB())) == "3 Murloc, 2 Beast"

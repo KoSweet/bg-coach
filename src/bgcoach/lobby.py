@@ -28,6 +28,21 @@ def describe_kw(kw: dict[str, int]) -> str:
     return ", ".join(f"{n} {KW_WORD.get(k, k.lower())}" for k, n in sorted(kw.items(), key=lambda x: -x[1])) or "no keywords"
 
 
+def tribes(board: list[dict] | None, db) -> list[list]:
+    """Their tribes, the way the game sums them up on hover: [["MURLOC", 4], ["BEAST", 2]], most first.
+    Worked out from their minions (the log has no tribe tag); dual-type minions count for both."""
+    c = Counter()
+    for m in board or []:
+        card = db.get(m.get("card_id")) if db else {}
+        for r in card.get("races") or ([card["race"]] if card.get("race") else []):
+            c[r] += 1
+    return [[r, n] for r, n in c.most_common()]
+
+
+def describe_tribes(tr: list[list]) -> str:
+    return ", ".join(f"{n} {'all-type' if r == 'ALL' else r.title()}" for r, n in tr) or "no tribe"
+
+
 def hero_average(hm, hero: str | None, rnd: int) -> float | None:
     """Average board stats of players on this hero on this round (None if unknown)."""
     h = hm.get(hero) if hm and hero else None

@@ -742,8 +742,9 @@ on("next_opponent", d => {
   const seen = l ? `Last board you saw (round ${l.round}${ago>3?`, ${ago} rounds ago: too old to compare`:""}): <b class="${l.highroll?'bad':''}">${l.stats}</b> stats${l.ratio?`, ${l.ratio.toFixed(1)}× the average for their hero${l.highroll?' <span class="tag err">highroll</span>':''}`:""} · ${esc(l.kw_text||"")} · your board now <b>${d.my_stats}</b>`
                  : `You haven't fought them yet.`;
   const proj = l && l.projected ? `<div style="margin-top:4px">If they grew like an average player on their hero since then: <b>≈ ${l.projected}</b> stats now vs your <b>${d.my_stats}</b>${l.projected > 1.3*d.my_stats ? ' <span class="tag err">likely bigger</span>' : l.projected*1.3 < d.my_stats ? ' <span class="tag">likely smaller</span>' : ''}.</div>` : "";
+  const theirs = l ? `<div style="margin-top:4px"><b>${esc(l.tribe_text||"")}</b></div><div class="row">${cardsImg(l.board)}</div>` : "";
   $("#liveNext").innerHTML = `<div class="card"><h3>Next opponent ${icon(d.opp_hero)} ${nm(d.opp_hero)}</h3>
-    <div>Tier ${d.opp_tier} · ${d.opp_hp} HP${d.opp_triples?` · ${d.opp_triples} triples`:""} · place ${d.opp_place}</div><div style="margin-top:4px">${seen}</div>${proj}<div id="liveOdds" class="muted" style="margin-top:4px"></div></div>`;
+    <div>Tier ${d.opp_tier} · ${d.opp_hp} HP${d.opp_triples?` · ${d.opp_triples} triples`:""} · place ${d.opp_place}</div>${theirs}<div style="margin-top:4px">${seen}</div>${proj}<div id="liveOdds" class="muted" style="margin-top:4px"></div></div>`;
 });
 on("next_opponent_odds", d => { const o = $("#liveOdds"); if (o) o.innerHTML = `⚔ Your board now vs that board (simulated): <b>${Math.round(d.win)}%</b> win · ${Math.round(d.tie)}% tie · ${Math.round(d.loss)}% loss. They've grown since round ${d.seen_round}, so treat it as a floor for them.`; });
 on("checks", d => { const t=$("#checkTag"); t.textContent = `✓ ${d.ok} checks` + (d.failed?` · ✗ ${d.failed} failed`:""); t.className = "tag " + (d.failed?"err":""); });

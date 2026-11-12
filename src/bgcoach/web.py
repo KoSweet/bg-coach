@@ -54,6 +54,9 @@ class Hub:
             last["ratio"] = round(last["stats"] / ref, 2) if ref else None
             last["highroll"] = bool(last["ratio"] and last["ratio"] >= lobby.HIGHROLL)
             last["kw_text"] = lobby.describe_kw(last.get("kw") or {})
+            db = self.watcher.db if self.watcher and self.watcher.db else V.card_db(V.current_bg_meta_build())
+            last["tribes"] = lobby.tribes(last.get("board"), db)
+            last["tribe_text"] = lobby.describe_tribes(last["tribes"])
             # their board now, if it grew like an average player's on that hero since you saw it
             last["projected"] = round(last["stats"] * now / ref) if ref and now and data.get("round", 0) > last["round"] else None
         self.next_opp = data

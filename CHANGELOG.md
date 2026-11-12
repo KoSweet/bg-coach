@@ -49,6 +49,11 @@ The point first, details on demand.
   Bob's Buddy agrees with the simulator on that fight (late fights are where most games are decided).
 - A short roll and unspent gold on the same turn are one lesson, not two that disagree.
 
+### Added
+- **Next opponent:** the live panel and the overlay show the minions you saw when you last met that
+  player, and their tribes the way the in-game hover sums them up ("6 Beast"), worked out from those
+  minions (the log has no tribe tag).
+
 ### Fixed
 - The freeze button toggles: a second press unfreezes. "Froze the shop, bought none" counted
   toggled-off freezes (13 false alarms in 11 games, 2 real); the timeline now shows UNFREEZE.
