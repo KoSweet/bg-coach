@@ -210,7 +210,7 @@ def check(g: dict, db=None, strength: list[dict] | None = None) -> list[dict]:
             to = acts[levels[-1]].get("to_tier")
             sit = situation.at(g, r, strength, db, next_tier=to)
             risks = situation.level_risks(sit) if sit else []
-            fair = sit and not risks and situation.level_support(sit)  # board ahead, lobby already there
+            fair = sit and situation.level_was_fair(sit)  # the reasons for it outweighed those against
             if not fair:  # a fair level that lost a fight is nothing to fix
                 why = f" In this game: {situation.join(risks)}." if risks else ""
                 pro = situation.level_support(sit) if sit else []
