@@ -350,8 +350,12 @@ class Overlay:
             return
         color = GREEN if r >= 1 else AMBER if r >= 0.8 else RED
         focus = "FOCUS · " if rnd and 6 <= rnd <= 9 else ""
-        when = "at the fight" if d.get("_fight") else "now"
-        self.strength.config(text=f"{focus}Board {r:.0%} of same-hero avg {when} (R{rnd})", fg=color)
+        if d.get("_fight"):
+            text = f"{focus}Board {r:.0%} of theirs at the fight (R{rnd})"
+        else:
+            n = d.get("strength_n") or 3
+            text = f"{focus}Board {r:.0%} of your last {n} opponents' (R{rnd})"
+        self.strength.config(text=text, fg=color)
 
     def _clear_feed(self):
         for r in self.rows:
@@ -519,7 +523,8 @@ class Overlay:
         if not last:
             return who + "\n(you haven't fought them yet)"
         hr = " HIGHROLL" if last.get("highroll") else ""
-        ratio = f", {last['ratio']:.1f}× their hero's avg{hr}" if last.get("ratio") else ""
+        vs = "the lobby then" if last.get("vs") == "lobby" else "their hero's avg"
+        ratio = f", {last['ratio']:.1f}× {vs}{hr}" if last.get("ratio") else ""
         ago = (d.get("round") or 0) - last["round"]
         old = f" ({ago} rounds ago: too old to compare)" if ago > 3 else ""
         proj = f"\n≈ {last['projected']} stats now if they grew like an average player" if last.get("projected") else ""

@@ -24,7 +24,7 @@ HABITS = {
     "hero": "At hero pick, compare top-4 rate, starting health and this lobby's tribes, not only the hero you like.",
     "fight:highroll": "Watch the next-opponent card while you shop: against a highroller at low HP, buy fighting "
                       "power instead of levelling.",
-    "fight": "When your board falls behind the average for your hero, stabilize (buy stats) before you level.",
+    "fight": "When your board falls behind the boards you're fighting, stabilize (buy stats) before you level.",
 }
 
 
@@ -93,7 +93,7 @@ def headline(d: dict, name) -> str:
     if k == "fight":
         s = f"Round {r}: lost {d.get('damage')} HP to {name(d.get('opp'))}"
         if d.get("highroll") and d.get("opp_ratio"):
-            s += f", a highroll ({d['opp_ratio']:.1f}× the average for their hero)"
+            s += f", a highroll ({d['opp_ratio']:.1f}× the other boards you fought then)"
         if d.get("no_counter"):
             s += ". Nothing in your shop that turn would have won it"
         return s + "."

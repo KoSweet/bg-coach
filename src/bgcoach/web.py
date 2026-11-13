@@ -45,15 +45,20 @@ class Hub:
         self._odds_gen = 0                  # newest odds request wins (debounce)
 
     def _matchup(self, data: dict, bracket: int) -> None:
-        """Next opponent: how their last board compared with the average for their hero."""
+        """Next opponent: how their last board compared with the lobby when you saw it."""
         from . import lobby, meta
         last = data.get("last_seen")
         if last:
             hm = meta.heroes(bracket)
             ref = lobby.hero_average(hm, last.get("hero"), last["round"])
             now = lobby.hero_average(hm, last.get("hero"), data.get("round") or last["round"])
-            last["ratio"] = round(last["stats"] / ref, 2) if ref else None
-            last["highroll"] = bool(last["ratio"] and last["ratio"] >= lobby.HIGHROLL)
+            # their board then against the lobby then (your boards and the others you fought around that
+            # round); the average for their hero only when there's nothing to compare with
+            lvl = last.get("lobby_level")
+            last["ratio"] = round(last["stats"] / lvl, 2) if lvl else (round(last["stats"] / ref, 2) if ref else None)
+            last["vs"] = "lobby" if lvl else "hero"
+            last["highroll"] = bool(last["ratio"] and last["ratio"] >= lobby.HIGHROLL
+                                    and last["stats"] >= 1.25 * (last.get("mine_then") or 0))
             last["kw_text"] = lobby.describe_kw(last.get("kw") or {})
             db = (self.watcher.db if self.watcher and self.watcher.db else V.card_db(V.current_bg_meta_build())) \
                 if last.get("board") else None
@@ -182,9 +187,8 @@ class Hub:
                 data["tempo"] = {"card": strongest, "hp": hp, "more": now[strongest] - (now.get(best) or 0)}
 
     def coach(self, kind: str, data: dict) -> dict:
-        """Add meta numbers to live events: option values, board strength vs same hero."""
+        """Add numbers to live events: option values, your board against your recent opponents'."""
         try:
-            from . import meta
             b = live_bracket()
             if kind == "offers":
                 self._advise(data, b)
@@ -195,16 +199,17 @@ class Hub:
                     self.next_opp = None  # a new round: wait for the game to announce the next opponent
                 elif kind == "action" and data.get("type") in ("SELL", "PLAY", "MOVE", "CAST", "CHOICE"):
                     self._schedule_odds(data["board_full"])  # your board changed: re-check the matchup
-            if kind in ("turn_start", "action", "combat") and data.get("hero"):
-                h = meta.heroes(b).get(data["hero"])
-                rnd = data.get("round")
-                ref = h["warband"].get(rnd) if h and rnd else None
-                mine = data.get("board_stats")
+            if kind in ("turn_start", "action", "combat"):
+                # your board against this lobby: the boards of your last three opponents (at a fight: theirs)
+                from .lobby import stats
+                mine, recent = data.get("board_stats"), data.get("recent_opp_stats") or []
+                ref = sum(recent) / len(recent) if recent else None
                 if kind == "combat":
-                    mine = sum((c.get("atk") or 0) + max(0, c.get("hp") or 0) for c in data.get("my_board") or [])
+                    mine, ref = stats(data.get("my_board")), stats(data.get("opp_board")) or None
                 if ref and mine is not None:
                     data["strength"] = round(mine / ref, 2)
-                    data["strength_ref"] = ref
+                    data["strength_ref"] = round(ref)
+                    data["strength_n"] = 1 if kind == "combat" else len(recent)
         except Exception:  # advice must never break the live feed
             pass
         return data

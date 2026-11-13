@@ -52,7 +52,8 @@ flowchart LR
 | `analysis.py` | Per-game coach section and the cross-game "what to work on" report |
 | `advice.py` | When an alternative is really better: fit, beyond chance, survival at low HP (all suggestions) |
 | `decisions.py` | Moments to review: hero, fights (with the matchup), counter lines, minion order, risky levels; card numbers as context |
-| `lobby.py` | The lobby as you saw it: opponent boards vs their hero's average (highrollers), leaderboard each round |
+| `lobby.py` | The lobby as you saw it: your board vs the boards you fought (head to head), opponent boards vs the lobby around that round (highrollers), tribes, leaderboard each round |
+| `situation.py` | The game at one decision, the way a pro reads it: next opponent (tier, form, last board), your board vs the lobby, health vs the damage cap, the tier race, what the next tier holds for your tribe; weighs reasons for and against a level |
 | `playbook.py` | Principles from top players' guides, checked against each game (see docs/PLAYBOOK.md) |
 | `lessons.py` | Ranks a game's moments into lessons (the one thing + a habit), shared by the game page, after-game card, overlay and Improve |
 | `synergy.py` | How well a card fits the build at that moment |
@@ -128,7 +129,7 @@ and at low HP name the option that adds the most to your board now.
 | Kind | Shown when |
 |---|---|
 | Hero | the best hero offered averages clearly better (rule 2) than the one you took; with the reasons: top-4 rate, early/late fight win rate, how this lobby's tribes suit each hero, the hero power |
-| Fight / Highroller | you lost 7+ HP with a board below 90% of the average for your hero, *or* to an opponent whose board was ≥ 1.5× the average for *their* hero ("highroller"), and Bob's Buddy didn't have you favoured. Shows their board, keywords, and when you had seen that player before |
+| Fight / Highroller | you lost 7+ HP with a board below 90% of the boards you fought around that round, *or* to an opponent whose board was ≥ 1.5× the lobby then (yours included) and ≥ 1.25× yours ("highroller"), and Bob's Buddy didn't have you favoured. Shows their board, keywords, and when you had seen that player before |
 | Counter | for a lost fight the simulator reproduces: a line with gold you had that turn and a minion still in your shop at the end of it (buy it *instead of* one you bought, *skip the level-up*, or spare gold + selling your weakest) changes the fight by ≥ 15 points (win + half the ties). Marked risky when it costs a tier or total stats. When no line works, the fight says so: it was decided earlier |
 | Position | the simulator finds an order of the *same minions* that wins ≥ 10 points more often |
 | Level | you levelled at 15 HP or less while your board was already below 85% of the average, then lost that fight |

@@ -440,7 +440,7 @@ function storyHtml(g, byRound){
   const luck = c.luck && c.luck.fights_with_odds ? ` · luck 🎲 ${c.luck.unlucky_losses.length} 🍀 ${c.luck.lucky_wins.length}` : "";
   return `<div class="card"><h3>Game story <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">· click a round to open it</span></h3>
     ${strengthBars(c.strength, byRound)}
-    <div class="muted" style="font-size:12.5px;margin-top:6px">Board vs same hero: <b class="${col(sp.early)}">${pct(sp.early)}</b> early · <b class="${col(sp.mid)}">${pct(sp.mid)}</b> mid · <b class="${col(sp.late)}">${pct(sp.late)}</b> late
+    <div class="muted" style="font-size:12.5px;margin-top:6px">Board vs your opponents: <b class="${col(sp.early)}">${pct(sp.early)}</b> early · <b class="${col(sp.mid)}">${pct(sp.mid)}</b> mid · <b class="${col(sp.late)}">${pct(sp.late)}</b> late
       · T4 ${tr[4]?"R"+tr[4]:"–"} · T5 ${tr[5]?"R"+tr[5]:"–"} · T6 ${tr[6]?"R"+tr[6]:"–"}${luck}</div></div>`;
 }
 function roundRowHtml(t, c, ms){
@@ -559,12 +559,12 @@ function strengthBars(strength, byRound){
     const luck = s.bb && s.bb.win>=50 && s.result==="LOSS" ? "🎲" : s.bb && s.bb.loss>=50 && s.result==="WIN" ? "🍀" : "";
     const ms = (byRound||{})[s.round] || [];
     const flags = ms.map(d=>KIND_ICON[d.kind]||"•").join("");
-    return `<div class="bar${byRound?" click":""}" ${byRound?`onclick="openRound(${s.round})"`:""} title="Round ${s.round}: your board ${s.mine} stats vs ${s.meta??"?"} average on this hero (${pct(r)}). ${s.result}.${bb}${ms.length?" · "+ms.map(d=>d.headline||d.kind).join(" · "):""}">
+    return `<div class="bar${byRound?" click":""}" ${byRound?`onclick="openRound(${s.round})"`:""} title="Round ${s.round}: your board ${s.mine} stats, ${pct(r)} of the boards you fought on rounds ${s.round-1}–${s.round+1}. ${s.result}.${bb}${ms.length?" · "+ms.map(d=>d.headline||d.kind).join(" · "):""}">
       <span class="fl">${flags}</span><span>${pct(r)}</span><div class="b" style="height:${h}px;background:${col}"></div><span class="r">R${s.round} ${res}${luck}</span></div>`;}).join("")}</div>
-    <div class="muted" style="font-size:11.5px;margin-top:2px">Your board ÷ same-hero average at each fight · ⚠ a buy that saves HP · ↘ where the game turned · ⇅ better order (board seen before) · 📘 playbook · ⚔ highroller · 🎲 lost while favoured · 🍀 won as underdog</div>`;
+    <div class="muted" style="font-size:11.5px;margin-top:2px">Your board ÷ the boards you fought (that round and the ones either side) · ⚠ a buy that saves HP · ↘ where the game turned · ⇅ better order (board seen before) · 📘 playbook · ⚔ highroller · 🎲 lost while favoured · 🍀 won as underdog</div>`;
 }
 function lobbyHtml(fights, g){
-  // every opponent you fought: their board vs the average for their hero that round
+  // every opponent you fought: their board vs the other boards you fought around that round
   if (!fights || !fights.length) return "";
   const by = {};
   fights.forEach(f => { const k = f.lobby_id||f.hero; const o = (by[k] = by[k] || {hero:null, seen:[]}); o.seen.push(f); o.hero = o.hero || f.hero; });
@@ -575,8 +575,8 @@ function lobbyHtml(fights, g){
     const cells = o.seen.map(f => `<span title="${esc(Object.entries(f.kw||{}).map(([a,b])=>b+' '+a.toLowerCase().replace(/_/g,' ')).join(', ')||'no keywords')}" style="margin-right:10px;white-space:nowrap">R${f.round} <b class="${f.highroll?'bad':''}">${f.stats}</b>${f.ratio?` <span class="muted">${f.ratio.toFixed(1)}×</span>`:""} <span class="${f.result==='LOSS'?'bad':f.result==='WIN'?'good':'muted'}">${(f.result||'?')[0]}</span></span>`).join("");
     return `<tr><td>${icon(o.hero)} ${nm(o.hero)}${hi?' <span class="tag err">highroll</span>':''}</td><td class="muted">${lb?`#${lb.place} · T${lb.tier} · ${lb.triples} triples`:""}</td><td>${cells}</td></tr>`;
   }).join("");
-  return `<details style="margin-top:10px"><summary><b>Lobby</b> <span class="muted">(${Object.keys(by).length} opponents: their board when you fought them, × the average for their hero; hover for keywords)</span></summary>
-    <table style="margin-top:6px"><thead><tr><th>Opponent</th><th>Final</th><th>Fights (stats · × hero average · W/L/T)</th></tr></thead><tbody>${rows}</tbody></table></details>`;
+  return `<details style="margin-top:10px"><summary><b>Lobby</b> <span class="muted">(${Object.keys(by).length} opponents: their board when you fought them, × the other boards you fought then; hover for keywords)</span></summary>
+    <table style="margin-top:6px"><thead><tr><th>Opponent</th><th>Final</th><th>Fights (stats · × the lobby · W/L/T)</th></tr></thead><tbody>${rows}</tbody></table></details>`;
 }
 function cardNotesHtml(notes, withGame){
   if (!notes || !notes.length) return "";
@@ -664,7 +664,7 @@ function showStrength(d){
   if (d.strength==null) return;
   const r = d.strength, col = r>=1?"var(--good)":r>=0.8?"var(--warn)":"var(--bad)";
   const focus = d.round>=6 && d.round<=9 ? " · your focus" : "";
-  $("#liveStrength").innerHTML = `<div class="stat"><div class="k">Board vs same hero (R${d.round})${focus}</div><div class="v" style="color:${col}">${Math.round(r*100)}%</div></div>`;
+  $("#liveStrength").innerHTML = `<div class="stat"><div class="k">${d.strength_n===1?"Board vs theirs at the fight":`Board vs your last ${d.strength_n||3} opponents`} (R${d.round})${focus}</div><div class="v" style="color:${col}">${Math.round(r*100)}%</div></div>`;
 }
 function showSummary(d){
   // between games: one lesson and one habit, nothing else (the full review is one click away)
@@ -740,7 +740,7 @@ on("combat", d => { live.combats[d.round]=d; renderLive(); $("#liveNext").innerH
 on("next_opponent", d => {
   const l = d.last_seen;
   const ago = l ? d.round - l.round : 0;
-  const seen = l ? `Last board you saw (round ${l.round}${ago>3?`, ${ago} rounds ago: too old to compare`:""}): <b class="${l.highroll?'bad':''}">${l.stats}</b> stats${l.ratio?`, ${l.ratio.toFixed(1)}× the average for their hero${l.highroll?' <span class="tag err">highroll</span>':''}`:""} · ${esc(l.kw_text||"")} · your board now <b>${d.my_stats}</b>`
+  const seen = l ? `Last board you saw (round ${l.round}${ago>3?`, ${ago} rounds ago: too old to compare`:""}): <b class="${l.highroll?'bad':''}">${l.stats}</b> stats${l.ratio?`, ${l.ratio.toFixed(1)}× ${l.vs==="lobby"?"the boards in your lobby then":"the average for their hero"}${l.highroll?' <span class="tag err">highroll</span>':''}`:""} · ${esc(l.kw_text||"")} · your board now <b>${d.my_stats}</b>`
                  : `You haven't fought them yet.`;
   const proj = l && l.projected ? `<div style="margin-top:4px">If they grew like an average player on their hero since then: <b>≈ ${l.projected}</b> stats now vs your <b>${d.my_stats}</b>${l.projected > 1.3*d.my_stats ? ' <span class="tag err">likely bigger</span>' : l.projected*1.3 < d.my_stats ? ' <span class="tag">likely smaller</span>' : ''}.</div>` : "";
   const theirs = l ? `<div style="margin-top:4px"><b>${esc(l.tribe_text||"")}</b></div><div class="row">${cardsImg(l.board)}</div>` : "";

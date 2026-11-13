@@ -2,7 +2,7 @@
 
 Two kinds of evidence, always labelled:
 - "meta"  : comparison with thousands of games at your MMR (Firestone). Hero picks, Discover picks,
-            board strength vs players on the same hero.
+            (board strength is judged against this lobby: the boards you fought, see lobby.py).
 - "yours" : comparison between your own better and worse games (small samples -> shown with n).
 Nothing here is a rule; every number says how it was computed and from how many games.
 """
@@ -122,7 +122,7 @@ def game_analysis(g: dict, bracket: int) -> dict:
                             "why": hero_reasons(prof[best["hero"]], prof[picked["hero"]], db)
                             if best["hero"] != picked["hero"] else []}
 
-    # ---- the lobby: every opponent board you fought, vs the average for their hero
+    # ---- the lobby: every opponent board you fought, vs the other boards you fought then
     out["lobby"] = lobby.fights(g, hm)
 
     # ---- tempo
@@ -133,14 +133,20 @@ def game_analysis(g: dict, bracket: int) -> dict:
                 reach[tier] = t["round"]
     out["tier_round"] = reach
 
-    # ---- board strength vs players on the same hero (meta)
+    # ---- board strength vs this lobby: your boards ÷ the boards you fought on rounds r-1..r+1.
+    # (The average for your hero across all games is kept as `hero_ratio`, a fallback only.)
     hmeta = hm.get(g.get("hero"))
+    combats = g.get("combats") or []
     strength = []
-    for c in g.get("combats") or []:
+    for c in combats:
         mine = _stats(c.get("my_board"))
         ref = hmeta["warband"].get(c["round"]) if hmeta else None
+        h2h = lobby.head_to_head(combats, c["round"] - 1, c["round"] + 1)
+        hero_ratio = round(mine / ref, 2) if ref else None
         strength.append({"round": c["round"], "mine": mine, "meta": ref,
-                         "ratio": round(mine / ref, 2) if ref else None, "result": c.get("result"),
+                         "lobby": lobby.lobby_level(combats, c["round"]),
+                         "ratio": h2h if h2h is not None else hero_ratio, "hero_ratio": hero_ratio,
+                         "result": c.get("result"),
                          "wr_meta": hmeta["combat"].get(c["round"]) if hmeta else None})
     out["strength"] = strength
 
@@ -270,7 +276,7 @@ def improve_report(games: list[dict]) -> dict:
 
     # (Discover / triple / Dark Gift picks: card averages are context only, see coach_report card_notes)
 
-    # 3. board strength vs same hero, by phase (meta comparison + your own outcome split)
+    # 3. board strength vs the boards you fought, by phase (your own outcome split)
     for ph, label in (("early", "rounds 1–5"), ("mid", "rounds 6–9"), ("late", "rounds 10+")):
         vals = [r["a"]["strength_phase"][ph] for r in rows if r["a"]["strength_phase"][ph] is not None]
         if len(vals) < 5:
@@ -280,9 +286,9 @@ def improve_report(games: list[dict]) -> dict:
         sp = _split(rows, f"str_{ph}", 0.8, worse_if_higher=False)
         med = st.median(vals)
         habits.append({
-            "id": f"strength_{ph}", "evidence": "meta+yours", "cost": round(sp["diff"] * sp["share"], 2) if sp else 0,
+            "id": f"strength_{ph}", "evidence": "yours", "cost": round(sp["diff"] * sp["share"], 2) if sp else 0,
             "n": len(vals), "title": f"Board strength, {label}",
-            "finding": f"Your board in {label} is typically {med:.0%} of what players on the same hero at your MMR have.",
+            "finding": f"In {label} your board typically has {med:.0%} of the stats of the boards you fight.",
             "detail": (f"Games where it was under 80%: average place {sp['place_bad']} ({sp['n_bad']} games) vs "
                        f"{sp['place_good']} otherwise ({sp['n_good']} games).") if sp else "Not enough games to split.",
             "advice": {"early": "Early on, prioritise buying stats/tempo over economy setups; don't skip combats with an empty board.",
@@ -362,9 +368,9 @@ def stats_table(rows: list[dict]) -> list[dict]:
         ("Round you reach tier 4", lambda r: r["a"]["tier_round"].get(4), None, "median"),
         ("Round you reach tier 5", lambda r: r["a"]["tier_round"].get(5), None, "median, games that got there"),
         ("Round you reach tier 6", lambda r: r["a"]["tier_round"].get(6), None, "median, games that got there"),
-        ("Board vs same hero, rounds 1–5", lambda r: r["a"]["strength_phase"]["early"], 1.0, "100% = meta average"),
-        ("Board vs same hero, rounds 6–9", lambda r: r["a"]["strength_phase"]["mid"], 1.0, "100% = meta average"),
-        ("Board vs same hero, rounds 10+", lambda r: r["a"]["strength_phase"]["late"], 1.0, "100% = meta average"),
+        ("Board vs your opponents, rounds 1–5", lambda r: r["a"]["strength_phase"]["early"], 1.0, "100% = even"),
+        ("Board vs your opponents, rounds 6–9", lambda r: r["a"]["strength_phase"]["mid"], 1.0, "100% = even"),
+        ("Board vs your opponents, rounds 10+", lambda r: r["a"]["strength_phase"]["late"], 1.0, "100% = even"),
         ("HP lost by round 8", lambda r: r["a"]["hp_lost_by_r8"], None, "incl. armor"),
         ("Refreshes per game", lambda r: r["a"]["refreshes"], None, ""),
         ("Gold left unspent per game", lambda r: r["a"]["gold_unspent"], None, "summed over turns"),
@@ -424,7 +430,7 @@ def coach_report(games: list[dict], recent: int = 20) -> dict:
     # which kind of decision shows up most in your recent games
     kinds = {"counter": "A buy from your shop would have saved real HP in a fight you lost (simulated)",
              "turning": "The game turned below 15 HP: your board was behind while you levelled or rolled",
-             "fight": "Fights lost to a real highroller (2× the average for their hero)",
+             "fight": "Fights lost to a real highroller (2× the other boards you fought then)",
              "hero": "Hero choice",
              "position": "Minion order: another order of the same minions won clearly more often (simulated)"}
     from .playbook import RULES

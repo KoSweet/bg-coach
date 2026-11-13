@@ -123,9 +123,14 @@ def buy_decisions(g: dict, bracket: int) -> list[dict]:
     return out
 
 
+def _vs_words(opp: dict) -> str:
+    """What an opponent's board ratio is measured against (lobby.fights)."""
+    return "the other boards you fought then" if opp.get("vs") == "lobby" else "the average for their hero"
+
+
 def fight_decisions(g: dict, strength: list[dict], opponents: list[dict] | None = None) -> list[dict]:
     """Fights that cost a lot of HP while your board was behind or the opponent was highrolling,
-    with the matchup (their board vs the average for their hero) and what that turn looked like."""
+    with the matchup (their board vs the other boards you fought then) and what that turn looked like."""
     from .lobby import describe_kw
     by_round = {t["round"]: t for t in g.get("turns") or []}
     opp_by_round = {f["round"]: f for f in opponents or []}
@@ -154,7 +159,7 @@ def fight_decisions(g: dict, strength: list[dict], opponents: list[dict] | None 
         them = ""
         if opp.get("stats") is not None:
             them = (f" Their board: {opp['stats']} stats"
-                    + (f", {opp['ratio']:.1f}× the average for their hero" if opp.get("ratio") else "")
+                    + (f", {opp['ratio']:.1f}× {_vs_words(opp)}" if opp.get("ratio") else "")
                     + f" ({describe_kw(opp.get('kw') or {})}).")
             if opp.get("seen_before"):
                 sb = opp["seen_before"]
@@ -165,8 +170,8 @@ def fight_decisions(g: dict, strength: list[dict], opponents: list[dict] | None 
             "opp_stats": opp.get("stats"), "opp_ratio": opp.get("ratio"), "highroll": opp.get("highroll", False),
             "opp_kw": opp.get("kw"), "seen_before": opp.get("seen_before"),
             "turn": ", ".join(bits), "line": t.get("line"), "bb": bb,
-            "calc": f"Your board {s['mine']} total stats vs {s['meta']:.0f} average for your hero on round {s['round']} "
-                    f"= {s['ratio']:.0%}. Lost {c.get('damage_taken')} HP (had {hp_before}).{them}"
+            "calc": f"Your board: {s['mine']} total stats, {s['ratio']:.0%} of the boards you fought on rounds "
+                    f"{s['round'] - 1}–{s['round'] + 1}. Lost {c.get('damage_taken')} HP (had {hp_before}).{them}"
                     + (f" Bob's Buddy: {bb['win']:.0f}% win / {bb['tie']:.0f}% tie / {bb['loss']:.0f}% loss." if bb else ""),
         })
     return out
@@ -305,7 +310,7 @@ def turning_point(g: dict, strength: list[dict], opponents: list[dict] | None = 
         return None
     if keyword_board(cross.get("my_board")):
         return _keyword_turn(cross, fought, hp)  # losing fights, told by its record, never by its stat total
-    # behind = the board was under the same-hero average in that fight and clearly behind on some turn
+    # behind = the board was under the boards you were fighting then, and clearly behind on some turn
     behind = bool(ratios) and min(ratios) < 0.85 and (st.get(r) if st.get(r) is not None else 1) < 0.9
     # levelled on a turn when the board was already behind (judged by the fight before that turn)
     levelled_behind = any(any(a["type"] == "LEVEL" for a in turns[x].get("actions") or [])
@@ -323,7 +328,7 @@ def turning_point(g: dict, strength: list[dict], opponents: list[dict] | None = 
         cause, habit = "levelled", ("Before levelling, ask: will I drop below 15 HP if I lose? If yes, spend the "
                                     "turn on stats (stabilize) and level when you're even again.")
     elif behind:
-        cause, habit = "behind", ("When your board drops below about 80% of the average for your hero, buy fighting "
+        cause, habit = "behind", ("When your board drops below about 80% of the boards you're fighting, buy fighting "
                                   "power (pairs, big stat units, tavern spells) before anything else.")
     else:
         return None  # normal board, normal opponent: close fights, not a decision
@@ -334,9 +339,10 @@ def turning_point(g: dict, strength: list[dict], opponents: list[dict] | None = 
     out = hp(cross, "after") <= 0
     what = ((f"Round {r}: you were knocked out from {hp(cross, 'before')} HP." if out else
              f"Round {r}: you dropped from {hp(cross, 'before')} to {hp(cross, 'after')} HP, below 15.")
-            + (f" Their board was a highroll ({opp['ratio']:.1f}× the average for their hero)." if cause == "highroll"
-               else f" On rounds {window[0]}–{r} your board was {trend} of the average for your hero, and you {did}."
-               + (f" (Their board was also a highroll: {opp['ratio']:.1f}× their hero's average.)" if opp.get("highroll")
+            + (f" Their board was a highroll ({opp['ratio']:.1f}× {_vs_words(opp)})." if cause == "highroll"
+               else f" On rounds {window[0]}–{r} your board had {trend} of the stats of the boards you fought, "
+                    f"and you {did}."
+               + (f" (Their board was also a highroll: {opp['ratio']:.1f}× {_vs_words(opp)}.)" if opp.get("highroll")
                   and opp.get("ratio") else "")))
     sit = situation.at(g, r, strength, db)
     if cause == "levelled":  # say why that level was wrong in this game, not only that it happened
@@ -494,7 +500,7 @@ def all_decisions(g: dict, bracket: int, strength: list[dict], opponents: list[d
     - the turning point (where you crossed below 15 HP, and why)
     - lines that would have saved real HP (simulated, with what was in your shop)
     - minion order, only against a board you had already seen
-    - playbook habits, and lost fights only against a real highroller (2× their hero's average)
+    - playbook habits, and lost fights only against a real highroller (2× the other boards you fought then)
     Card-average comparisons are separate (card_notes): context only."""
     from .playbook import check as playbook_check
     db = V.card_db(g.get("build") or V.current_bg_meta_build())

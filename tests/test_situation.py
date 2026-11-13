@@ -25,35 +25,44 @@ class DB3(DB):
     by_id = cards
 
 
-def game(my_hp=27, others=(40, 38, 35, 30, 12, 10, 8), tiers=(5, 5, 5, 5, 4, 4, 4), my_tier=5):
-    lobby = {str(i + 2): {"hp": hp, "tier": t} for i, (hp, t) in enumerate(zip(others, tiers, strict=True))}
-    lobby["1"] = {"hp": my_hp, "tier": my_tier}
-    board = [{"card_id": c, "atk": 5, "hp": 5} for c in ("U1", "U2", "U3")]
-    t8 = {"round": 8, "hp": my_hp, "armor": 0, "tier": my_tier, "me_lobby": 1, "lobby": lobby, "board": board,
-          "actions": [{"type": "LEVEL", "to_tier": 6}]}
-    c8 = {"round": 8, "result": "LOSS", "hp_after": my_hp - 15, "armor_after": 0, "damage_taken": 15,
-          "my_board": board, "opp_board": []}
-    return {"start": "2026-11-12T20:00:00", "placement": 6, "turns": [t8], "combats": [c8]}
+def game(my_hp=27, mine=5, theirs=10, opp_tier=6, opp_hp=(40, 40, 40, 40), tiers=(5, 5, 5, 4, 4, 4), cap=10):
+    """Rounds 5-8. Lobby slot 1 is you, slot 2 the opponent you meet on rounds 6 and 8 (Big Opp)."""
+    board = [{"card_id": c, "atk": mine, "hp": mine} for c in ("U1", "U2", "U3")]
+    opp_board = [{"card_id": "X", "atk": theirs, "hp": theirs}] * 3
+    turns, combats = [], []
+    for i, r in enumerate(range(5, 9)):
+        lobby = {"1": {"hp": my_hp, "tier": 5}, "2": {"hero": "OPP", "hp": opp_hp[i], "tier": opp_tier}}
+        lobby.update({str(k + 3): {"hp": 30, "tier": t} for k, t in enumerate(tiers)})
+        turns.append({"round": r, "hp": my_hp, "armor": 0, "tier": 5, "me_lobby": 1, "lobby": lobby, "board": board,
+                      "actions": [{"type": "LEVEL", "to_tier": 6}] if r == 8 else []})
+        combats.append({"round": r, "result": "LOSS" if r == 8 else "TIE", "opp_lobby_id": 2 if r in (6, 8) else 3,
+                        "hp_after": my_hp - 15 if r == 8 else my_hp, "armor_after": 0,
+                        "damage_taken": 15 if r == 8 else 0, "damage_cap": cap, "my_board": board,
+                        "opp_board": opp_board})
+    return {"start": "2026-11-12T20:00:00", "placement": 6, "turns": turns, "combats": combats}
 
 
-def test_situation_reads_the_leaderboard_and_the_pool():
-    s = situation.at(game(), 8, [{"round": 7, "ratio": 0.55}], DB(), next_tier=6)
-    assert s["hp"] == 27 and s["more_hp"] == 4 and s["at_next"] == 0 and s["tribe"] == "UNDEAD"
-    assert s["next_tier_cards"] == ["Big Undead"]
+def test_situation_reads_the_next_opponent_first_then_the_lobby():
+    s = situation.at(game(), 8, None, DB(), next_tier=6)
+    assert s["opp"]["name"] == "OPP" and s["opp"]["unhurt"] == 3 and s["vs_lobby"] == 0.5
     risks = situation.level_risks(s)
-    assert any("far too weak" in r for r in risks)                       # 55% of the hero's average
-    assert any("nobody else was on tier 6" in r for r in risks)           # no race to keep up with
+    assert risks[0].startswith("your next opponent, OPP, was already on tier 6 (you on 5), hadn't lost in 3 rounds")
+    assert "had 60 stats when you met on round 6, against your 30 now" in risks[0]
+    assert any("your board had only 50% of the stats of the boards you fought" in r for r in risks)
+    assert not any("nobody else was on tier 6" in r for r in risks)       # OPP is there: there is a race
     assert any("only Big Undead for your Undeads" in r for r in risks)    # the build didn't need tier 6
+    assert "even a loss was capped at 10, leaving you at 17" in situation.level_support(s)
+    assert "(They had 60 stats in that fight, you 30.)" in situation.summary(s)
 
 
 def test_level_warning_speaks_about_this_game_and_stays_quiet_when_fair():
-    weak = playbook.check(game(), DB(), [{"round": 7, "ratio": 0.55}])
+    weak = playbook.check(game(), DB())
     lvl = next(r for r in weak if r["rule"] == "level_below_cap")
-    assert "In this game: your board was far too weak" in lvl["what"] and lvl["context"]
-    # board ahead, everyone already on tier 6, a healthy lobby position: a fair level that lost a fight
-    fair = game(my_hp=27, others=(20, 18, 16, 30, 12, 10, 8), tiers=(6, 6, 6, 5, 5, 5, 5))
-    rules = [r["rule"] for r in playbook.check(fair, DB3(), [{"round": 7, "ratio": 1.3}])]
-    assert "level_below_cap" not in rules
+    assert "In this game: your next opponent, OPP" in lvl["what"] and "For it: even a loss" in lvl["what"]
+    assert lvl["context"][0].startswith("Round 8: next: OPP (tier 6, 40 HP, no loss in 3)")
+    # a weak next opponent (tier 4, lost twice), your board ahead, the lobby already on tier 6
+    fair = game(mine=10, theirs=5, opp_tier=4, opp_hp=(40, 32, 25, 20), tiers=(6, 6, 6, 5, 5, 5))
+    assert "level_below_cap" not in [r["rule"] for r in playbook.check(fair, DB3())]
 
 
 def test_order_change_names_the_move():
@@ -86,3 +95,19 @@ def test_live_odds_only_against_a_recent_board():
     seen = {"round": 3, "board": [{"card_id": "A", "atk": 2, "hp": 3}], "stats": 5, "projected": 15}
     assert web.Hub._their_board({"round": 6, "last_seen": seen}) == (seen["board"], False)
     assert web.Hub._their_board({"round": 7, "last_seen": seen}) is None
+
+
+def test_the_lobby_includes_you_and_one_weak_neighbour_cant_fake_a_highroll():
+    from bgcoach import lobby
+
+    def b(n):
+        return [{"card_id": "X", "atk": n, "hp": 0}]
+    # round 11 from a real game: their 13,462 against your 6,070; the only other opponent nearby had 414
+    combats = [{"round": 10, "my_board": b(2620), "opp_board": b(414), "result": "WIN"},
+               {"round": 11, "my_board": b(6070), "opp_board": b(13462), "result": "LOSS"}]
+    assert lobby.lobby_level(combats, 11, skip_round=11) == 2620          # median of 414, 2620, 6070
+    fights = lobby.fights({"combats": combats})
+    assert fights[1]["vs"] == "lobby" and fights[1]["ratio"] == 5.14 and fights[1]["highroll"]
+    # a board well above the lobby but smaller than yours is not a highroll against you
+    combats[1]["opp_board"], combats[1]["my_board"] = b(5000), b(9000)
+    assert not lobby.fights({"combats": combats})[1]["highroll"]

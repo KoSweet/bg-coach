@@ -128,7 +128,10 @@ class LiveWatcher(threading.Thread):
         if rp is not None and rp.g is not None and kind in ("turn_start", "action", "combat", "offers", "choice"):
             board = rp.board()
             data = {**data, "hero": rp.g.hero, "board_stats": sum(
-                (c.get("atk") or 0) + max(0, c.get("hp") or 0) for c in board)}
+                (c.get("atk") or 0) + max(0, c.get("hp") or 0) for c in board),
+                    # the yardstick for your board: the boards of your last three opponents (this lobby)
+                    "recent_opp_stats": [sum((m.get("atk") or 0) + max(0, m.get("hp") or 0) for m in c["opp_board"])
+                                         for c in rp.g.combats[-3:] if c.get("opp_board")]}
             if kind in ("turn_start", "action"):
                 data["board_full"] = board  # lets the app re-check the next fight as your board changes
             if kind == "offers":
@@ -143,7 +146,7 @@ class LiveWatcher(threading.Thread):
     @staticmethod
     def _next_opponent(rp, lobby_id: int) -> dict:
         """Who you fight next, as the game shows it: leaderboard entry + the last board you saw them with."""
-        from .lobby import keywords, stats
+        from .lobby import keywords, lobby_level, stats
         lb = rp.lobby().get(str(lobby_id)) or {}
         seen = [c for c in rp.g.combats if c.get("opp_lobby_id") == lobby_id and c.get("opp_board")]
         last = seen[-1] if seen else None
@@ -162,6 +165,8 @@ class LiveWatcher(threading.Thread):
                 "opp_recent": lost[-2:], "opp_unhurt": held,
                 "opp_triples": lb.get("triples"), "opp_place": lb.get("place"),
                 "last_seen": {"round": last["round"], "stats": stats(last["opp_board"]), "kw": keywords(last["opp_board"]),
+                              "lobby_level": lobby_level(rp.g.combats, last["round"], skip_round=last["round"]),
+                              "mine_then": stats(last.get("my_board")),
                               "board": last["opp_board"], "hero": last.get("opp_hero")} if last else None,
                 "my_hero": rp.g.hero, "my_board": board, "my_stats": stats(board), "my_tier": rp.tier()}
 

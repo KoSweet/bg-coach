@@ -49,6 +49,21 @@ The point first, details on demand.
   Bob's Buddy agrees with the simulator on that fight (late fights are where most games are decided).
 - A short roll and unspent gold on the same turn are one lesson, not two that disagree.
 
+### Changed
+- **This lobby is the yardstick, not the average for your hero.** Board strength is now your board
+  against the boards you actually fought (head to head, that round and the ones either side; live:
+  your last three opponents). A "highroll" is a board ≥ 1.5× the lobby around that round (your boards
+  included, so one weak neighbour can't fake a 30× highroll) *and* ≥ 1.25× yours. The game story bars,
+  turning points, fight lessons, Improve, the live strength line and the next-opponent panel all use
+  it; the hero average remains only as a fallback.
+- **Level lessons read like a pro's review**, in a pro's order: the next opponent (their tier against
+  yours, "hadn't lost in 3 rounds", the board you last saw), the lobby, what one loss can cost under
+  this round's damage cap and where it leaves you, the tier race, and what the next tier holds for
+  your tribe. Reasons for and against are weighed (the board and the cost of a loss count most); a
+  level whose reasons for it outweighed those against is variance, not a mistake, and isn't flagged.
+- The parser records each fight's **damage cap** (5 on rounds 1–3, 10 on 4–7, 15 from 8, then off);
+  logs are parsed again once (parser version 4).
+
 ### Added
 - **Reasons from this game** (`situation.py`): a lesson about levelling now says why it mattered
   in *this* game, from what was on screen that turn: your board against your hero's average ("far

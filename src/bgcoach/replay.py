@@ -45,7 +45,8 @@ BUTTONS = {
 # Bump when the game record gains or changes fields: `bgcoach import` (and the app) then re-parse
 # every archived log once, so older games get them too. 2 = lobby, end-of-turn shop.
 # 3 = locked hero offers; fights won in Duos (read from the enemy team's health).
-PARSER_VERSION = 3
+# 4 = the damage cap of each fight (5 / 10 / 15 early in the game, then off).
+PARSER_VERSION = 4
 SHOP_TYPES = {"MINION", "BATTLEGROUND_SPELL", "SPELL"}
 KEYWORD_TAGS = ("TAUNT", "DIVINE_SHIELD", "REBORN", "WINDFURY", "VENOMOUS", "POISONOUS", "STEALTH", "CLEAVE")
 
@@ -539,6 +540,9 @@ class Replay:
                 dealt = was - now
         c["hp_after"], c["armor_after"], c["damage_taken"], c["damage_dealt"] = hp_after, armor_after, taken, dealt
         c["line_end"] = self.line_no
+        ge = self.ents.get(self.game_entity) if self.game_entity is not None else None
+        cap = ge.int("BACON_COMBAT_DAMAGE_CAP") if ge else 0
+        c["damage_cap"] = cap if cap and ge.int("BACON_COMBAT_DAMAGE_CAP_ENABLED", 1) else None
         if taken and taken > 0:
             c["result"] = "LOSS"
         elif c.get("won_flag") or (dealt and dealt > 0):
