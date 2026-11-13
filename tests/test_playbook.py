@@ -84,8 +84,10 @@ def fight(rnd, mine, theirs, result="LOSS"):
 
 
 def test_early_order_weak_minion_leading():
-    lost = fight(4, [m(1, 1), m(8, 8), m(2, 2)], [m(5, 5)])
+    lost = fight(4, [m(1, 1), m(8, 8), m(2, 2)], [m(10, 10)])
     assert "early_order" in rules(game([turn(4)], [lost]))
+    hopeless = fight(4, [m(1, 1), m(8, 8), m(2, 2)], [m(30, 30)])     # their board was 3× yours: order didn't decide it
+    assert "early_order" not in rules(game([turn(4)], [hopeless]))
     shield = fight(4, [m(1, 1, "DIVINE_SHIELD"), m(8, 8)], [m(5, 5)])  # a shield up front is fine
     won = fight(4, [m(1, 1), m(8, 8)], [m(5, 5)], result="WIN")
     late = fight(9, [m(1, 1), m(8, 8)], [m(5, 5)])                    # late game: bumpers lead on purpose
@@ -155,8 +157,8 @@ def test_early_order_lets_a_rally_minion_lead():
         def get(self, cid):
             return {"WHELP": {"mechanics": ["BACON_RALLY"],
                               "text": "<b>Rally:</b> Your Tavern spells give an extra +1 Health this game."}}.get(cid, {})
-    rally = fight(7, [m(3, 7, cid="WHELP"), m(12, 12), m(4, 3)], [m(5, 5)])
-    plain = fight(7, [m(3, 7), m(12, 12), m(4, 3)], [m(5, 5)])
+    rally = fight(7, [m(3, 7, cid="WHELP"), m(12, 12), m(4, 3)], [m(20, 20)])
+    plain = fight(7, [m(3, 7), m(12, 12), m(4, 3)], [m(20, 20)])
     assert "early_order" not in [r["rule"] for r in playbook.check(game([turn(7)], [rally]), DB())]
     assert "early_order" in [r["rule"] for r in playbook.check(game([turn(7)], [plain]), DB())]
 

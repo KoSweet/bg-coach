@@ -11,7 +11,7 @@ from __future__ import annotations
 import statistics
 from collections import Counter
 
-HIGHROLL = 1.5  # an opponent's board ≥ 1.5× the other boards you fought around that round
+HIGHROLL = 1.5  # an opponent's board ≥ 1.5× the other boards you fought around that round (scaled)
 TECH = ("DIVINE_SHIELD", "VENOMOUS", "POISONOUS", "REBORN", "TAUNT", "WINDFURY", "MEGA_WINDFURY", "CLEAVE")
 KW_WORD = {"DIVINE_SHIELD": "divine shield", "VENOMOUS": "venomous", "POISONOUS": "poisonous", "REBORN": "reborn",
            "TAUNT": "taunt", "WINDFURY": "windfury", "MEGA_WINDFURY": "mega-windfury", "CLEAVE": "cleave"}
@@ -19,6 +19,24 @@ KW_WORD = {"DIVINE_SHIELD": "divine shield", "VENOMOUS": "venomous", "POISONOUS"
 
 def stats(board: list[dict] | None) -> int:
     return sum((m.get("atk") or 0) + max(0, m.get("hp") or 0) for m in board or [])
+
+
+DEITY_SHOWN = 0.1  # a Deity counts once it's 20+ stats and at least this share of their board
+
+
+def deity(c: dict, side: str = "opp") -> dict | None:
+    """Their Old God "Deity" in a fight, when it mattered: a hidden secret that joins the fight as a minion
+    after `after` of their minions die, grown by Aberrations (Faceless Converter, Dark Puppeteer...).
+    Everyone has one (a 1/1 until it's fed), so only a fed one is returned. Its stats are its largest
+    during the fight."""
+    board = stats(c.get(f"{side}_board"))
+    for d in c.get(f"{side}_secrets") or []:
+        if d.get("deity"):
+            atk, hp = d.get("atk_peak") or d.get("atk") or 0, d.get("hp_peak") or d.get("hp") or 0
+            if atk + hp >= max(20, DEITY_SHOWN * board):
+                return {"atk": atk, "hp": hp, "after": d.get("after") or 4,
+                        "start": [d.get("atk") or 0, d.get("hp") or 0]}
+    return None
 
 
 def keywords(board: list[dict] | None) -> dict[str, int]:
@@ -56,19 +74,37 @@ def head_to_head(combats: list[dict], lo: int, hi: int) -> float | None:
     return round(mine / opp, 2) if opp else None
 
 
+# How a typical board grows, round by round: median warband stats at high MMR (Firestone, Nov 2026).
+# Late-game boards double every round, so a board from round 9 is scaled before it's compared with
+# one from round 10.
+GROWTH = {1: 4, 2: 5, 3: 16, 4: 28, 5: 46, 6: 77, 7: 132, 8: 245, 9: 523, 10: 1101, 11: 2259, 12: 3887,
+          13: 5732, 14: 7591, 15: 8758}
+
+
+FLOOR = 0.5  # the lobby level is never below half the typical board (GROWTH) on that round
+
+
+def _growth(rnd: int) -> int:
+    return GROWTH[min(max(rnd, 1), max(GROWTH))]
+
+
 def lobby_level(combats: list[dict], rnd: int, skip_round: int | None = None) -> float | None:
-    """The typical board in your lobby around a round: the median of the boards on rounds rnd-1..rnd+1,
-    yours included (you're part of the lobby), leaving out the opponent being judged (`skip_round`).
-    Widens to rnd-2..rnd+2 when that gives fewer than three boards, so one weak neighbour (a ghost, a
-    dying player) can't make a normal board look like a 30× highroll."""
-    vals: list[int] = []
-    for w in (1, 2):
-        vals = [stats(c["opp_board"]) for c in combats or []
-                if rnd - w <= c["round"] <= rnd + w and c["round"] != skip_round and c.get("opp_board")]
-        vals += [stats(c["my_board"]) for c in combats or [] if rnd - w <= c["round"] <= rnd + w and c.get("my_board")]
+    """The typical board in your lobby on round `rnd`: the median of the other boards you fought on rounds
+    rnd-1..rnd+1 (widening to ±2, then ±3, until there are three), each scaled to round `rnd` by how boards grow. Left out: the opponent
+    being judged (`skip_round`), ghosts and knocked-out players (they can't stand for the lobby), and
+    your own board (a weak board of yours would make a normal one look like a highroll). None with fewer
+    than three boards: one neighbour isn't a lobby. Never below half the typical board at high MMR on
+    that round: a lobby of dying players can't turn a normal board into a "6× highroll"."""
+    vals: list[float] = []
+    for w in (1, 2, 3):
+        vals = [stats(c["opp_board"]) * _growth(rnd) / _growth(c["round"]) for c in combats or []
+                if rnd - w <= c["round"] <= rnd + w and c["round"] != skip_round and c.get("opp_board")
+                and not (isinstance(c.get("opp_hp_before"), int) and c["opp_hp_before"] <= 0)]
         if len(vals) >= 3:
             break
-    return statistics.median(vals) if vals else None
+    if len(vals) < 3:
+        return None
+    return round(max(statistics.median(vals), FLOOR * _growth(rnd)))
 
 
 def hero_average(hm, hero: str | None, rnd: int) -> float | None:

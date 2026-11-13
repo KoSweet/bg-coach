@@ -128,6 +128,107 @@ def _vs_words(opp: dict) -> str:
     return "the other boards you fought then" if opp.get("vs") == "lobby" else "the average for their hero"
 
 
+def highroll_words(opp: dict) -> str:
+    """'13,462 stats against your 6,070 (2.2× yours), 5.1× the other boards you fought then': your board
+    first (that's the fight), the lobby second (that's why it's called a highroll)."""
+    st, mine = opp.get("stats") or 0, opp.get("mine") or 0
+    out = f"{st:,} stats against your {mine:,}" + (f" ({st / mine:.1f}× yours)" if mine else "")
+    if opp.get("ratio"):
+        out += f", {opp['ratio']:.1f}× {_vs_words(opp)}"
+    return out
+
+
+# Cards that beat one giant minion, and the fix a pro would make (by card name, any golden version).
+BIG_MINION_ANSWERS = {
+    "Heroic Underdog": "it gains the Attack of whatever it hits, so one giant minion feeds it: a Taunt on a small "
+                       "minion takes that hit instead",
+}
+UPSET = 3.0         # lost with three times their stats: something the board didn't show decided it
+UPSET_HIDDEN = 2.0  # ...or twice, when their Deity or a secret was in the fight
+
+
+def hidden_strength(c: dict, db) -> list[str]:
+    """What the opponent's board didn't show: their Old God Deity (a secret that joins the fight as a minion
+    after some of their minions die, grown by Aberrations like Faceless Converter) and other secrets."""
+    from .lobby import deity
+    out, secrets = [], []
+    dt = deity(c)
+    if dt:
+        a, h = dt["start"]
+        peak = f", {dt['atk']:,}/{dt['hp']:,} by the end of the fight" if (a, h) != (dt["atk"], dt["hp"]) else ""
+        out.append(f"their Deity, a hidden {a:,}/{h:,}{peak}, which joins the fight after {dt['after']} of their "
+                   f"minions die")
+    for d in c.get("opp_secrets") or []:
+        if not d.get("deity") and d.get("card_id"):
+            secrets.append(db.name(d["card_id"]) if db else d["card_id"])
+    if secrets:
+        out.append(f"{'a secret' if len(secrets) == 1 else 'secrets'} ({', '.join(secrets)})")
+    return out
+
+
+def deciding_fights(g: dict, opponents: list[dict] | None, db) -> list[dict]:
+    """The fights that decided the game, explained: your last fight in a top-4 game, and any loss where you
+    had half again their stats (something the board didn't show beat you). Says what was hidden (their
+    Deity, secrets), what killed your biggest minion and whether a known card answers one big minion."""
+    from .lobby import stats
+    combats = sorted(g.get("combats") or [], key=lambda c: c["round"])
+    if not combats:
+        return []
+    name = db.name if db else (lambda cid: cid)
+    by_round = {f["round"]: f for f in opponents or []}
+    out = []
+    for c in combats:
+        if c.get("result") != "LOSS":
+            continue
+        mine, theirs = stats(c.get("my_board")), stats(c.get("opp_board"))
+        final = c is combats[-1] and (g.get("placement") or 9) <= 4
+        r, opp = c["round"], c.get("opp_hero")
+        hidden = hidden_strength(c, db)
+        # early fights are decided by keywords more than stats: twice their stats isn't strange there,
+        # three times is; with something hidden on their side, twice is enough
+        upset = theirs > 0 and (c.get("damage_taken") or 0) >= 7 and (
+            mine >= UPSET * theirs or (hidden and mine >= UPSET_HIDDEN * theirs))
+        if not (final or upset):
+            continue
+        if upset:
+            lead = (f"Round {r}: you lost to {name(opp)} with {mine:,} stats against their {theirs:,} "
+                    f"({mine / max(1, theirs):.1f}× theirs).")
+        else:
+            lead = f"Round {r}, the fight that ended your game: {name(opp)} had {theirs:,} stats against your {mine:,}."
+        why, habit = [], None
+        if hidden:
+            why.append("What their board didn't show: " + situation.join(hidden) + ".")
+            if any(h.startswith("their Deity") for h in hidden):
+                habit = ("Hover the opponent before the fight: Aberration boards (Faceless Converter, Dark Puppeteer, "
+                         "Mysterious K'Thir) feed a Deity that isn't in their stats. Count it in, and don't put all "
+                         "your stats in one minion against it.")
+        big = c.get("my_big") or {}
+        if big.get("died") and big.get("killed_by"):
+            killer = name(big["killed_by"])
+            share = ((big.get("atk") or 0) + (big.get("hp") or 0)) / max(1, mine)
+            line = f"Your biggest minion, {name(big['card_id'])} ({big.get('atk') or 0:,}/{big.get('hp') or 0:,}"
+            line += f", {share:.0%} of your stats)" if share >= 0.4 else ")"
+            line += f", was killed by {killer}"
+            answer = BIG_MINION_ANSWERS.get(killer)
+            line += f": {answer}." if answer else "."
+            why.append(line)
+            if answer:
+                habit = f"Against {killer}: {answer}."
+        seen = [f["round"] for f in opponents or [] if f.get("lobby_id") and f["lobby_id"] == c.get("opp_lobby_id")
+                and f["round"] < r]
+        if seen:
+            why.append(f"You'd fought this player on round{'s' if len(seen) > 1 else ''} "
+                       f"{', '.join(map(str, seen))}.")
+        if not why and not final:
+            continue
+        out.append({"kind": "decider", "round": r, "what": " ".join([lead, *why]), "habit": habit, "opp": opp,
+                    "damage": c.get("damage_taken"), "mine": mine, "theirs": theirs, "final": final,
+                    "upset": upset, "hidden": hidden,
+                    "sim_blind": any(h.startswith("their Deity") for h in hidden),
+                    "opp_ratio": (by_round.get(r) or {}).get("ratio")})
+    return out
+
+
 def fight_decisions(g: dict, strength: list[dict], opponents: list[dict] | None = None) -> list[dict]:
     """Fights that cost a lot of HP while your board was behind or the opponent was highrolling,
     with the matchup (their board vs the other boards you fought then) and what that turn looked like."""
@@ -159,7 +260,7 @@ def fight_decisions(g: dict, strength: list[dict], opponents: list[dict] | None 
         them = ""
         if opp.get("stats") is not None:
             them = (f" Their board: {opp['stats']} stats"
-                    + (f", {opp['ratio']:.1f}× {_vs_words(opp)}" if opp.get("ratio") else "")
+                    + (f" ({highroll_words(opp)})" if opp.get("ratio") else "")
                     + f" ({describe_kw(opp.get('kw') or {})}).")
             if opp.get("seen_before"):
                 sb = opp["seen_before"]
@@ -339,11 +440,14 @@ def turning_point(g: dict, strength: list[dict], opponents: list[dict] | None = 
     out = hp(cross, "after") <= 0
     what = ((f"Round {r}: you were knocked out from {hp(cross, 'before')} HP." if out else
              f"Round {r}: you dropped from {hp(cross, 'before')} to {hp(cross, 'after')} HP, below 15.")
-            + (f" Their board was a highroll ({opp['ratio']:.1f}× {_vs_words(opp)})." if cause == "highroll"
+            + (f" Their board was a highroll: {highroll_words(opp)}." if cause == "highroll"
                else f" On rounds {window[0]}–{r} your board had {trend} of the stats of the boards you fought, "
                     f"and you {did}."
-               + (f" (Their board was also a highroll: {opp['ratio']:.1f}× {_vs_words(opp)}.)" if opp.get("highroll")
+               + (f" (Their board was also a highroll: {highroll_words(opp)}.)" if opp.get("highroll")
                   and opp.get("ratio") else "")))
+    lives = _losses_left(combats, window)
+    if lives and cause != "highroll":
+        what += " " + lives
     sit = situation.at(g, r, strength, db)
     if cause == "levelled":  # say why that level was wrong in this game, not only that it happened
         lr = max((x for x in window if any(a["type"] == "LEVEL" for a in turns[x].get("actions") or [])), default=None)
@@ -360,6 +464,20 @@ def turning_point(g: dict, strength: list[dict], opponents: list[dict] | None = 
             "context": [situation.summary(sit)] if sit else [],
             "damage": hp(cross, "before") - hp(cross, "after"), "ratios": ratios, "levels": levels,
             "opp": cross.get("opp_hero"), "hp_before": hp(cross, "before"), "hp_after": hp(cross, "after")}
+
+
+def _losses_left(combats: list[dict], window: list[int]) -> str | None:
+    """'From round 9 you were on 30 HP with losses capped at 15: two losses from out.' Health counts in
+    losses, not points: the first round of the window where two capped losses (or fewer) would end it."""
+    for c in combats:
+        if c["round"] not in window or not c.get("damage_cap"):
+            continue
+        hp = (c.get("hp_before") or 0) + (c.get("armor_before") or 0)
+        n = -(-hp // c["damage_cap"])  # capped losses until you're out
+        if n <= 2:
+            return (f"From round {c['round']} you were on {hp} HP with losses capped at {c['damage_cap']}: "
+                    f"{'one loss' if n == 1 else 'two losses'} from out.")
+    return None
 
 
 def with_simulation(g: dict, ds: list[dict], opponents: list[dict] | None = None) -> list[dict]:
@@ -509,7 +627,16 @@ def all_decisions(g: dict, bracket: int, strength: list[dict], opponents: list[d
     rules = [x for x in playbook_check(g, db, strength)  # the turning point already says it for that round
              if not (tp and x["rule"] == "level_below_cap" and x["round"] == tp["round"])]
     fights = [f for f in fights if not (tp and f["round"] == tp["round"])]  # the turning point covers it
-    d = fights + rules + ([tp] if tp else [])
+    deciders = deciding_fights(g, opponents, db)
+    for x in deciders:
+        if tp and x["round"] == tp["round"]:  # one round, one lesson: the turning point gets the explanation
+            extra = x["what"].split(". ", 1)[1] if ". " in x["what"] else ""
+            if extra:
+                tp["what"] += " " + extra
+            tp["habit"] = x.get("habit") or tp.get("habit")
+    deciders = [x for x in deciders if not (tp and x["round"] == tp["round"])]
+    fights = [f for f in fights if f["round"] not in {x["round"] for x in deciders}]
+    d = fights + rules + deciders + ([tp] if tp else [])
     d = with_simulation(g, d, opponents)
     countered = {x["round"] for x in d if x["kind"] == "counter"}
     for x in d:

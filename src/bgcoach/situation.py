@@ -46,6 +46,23 @@ def main_tribe(board: list[dict] | None, db) -> tuple[str | None, int]:
     return tribe, n
 
 
+def got_from_tier(t: dict, tier: int, db) -> list[str]:
+    """Minions of tier `tier` (or higher) you bought or played on this turn after levelling: what the level
+    paid for straight away (discovers included)."""
+    if not db:
+        return []
+    acts = t.get("actions") or []
+    lv = next((i for i, a in enumerate(acts) if a["type"] == "LEVEL"), None)
+    if lv is None:
+        return []
+    out = []
+    for a in acts[lv + 1:]:
+        card = db.get(a.get("card_id")) if a["type"] in ("BUY", "PLAY") and a.get("card_id") else None
+        if card and (card.get("techLevel") or 0) >= tier and card.get("name") and a["type"] == "PLAY":
+            out.append(card["name"])
+    return out
+
+
 def tier_cards(db, tier: int, tribe: str) -> list[str]:
     """Names of the minions of `tribe` that tavern tier `tier` adds (the pool, not tokens)."""
     if not db or not tribe or not hasattr(db, "by_id"):
@@ -104,7 +121,8 @@ def at(g: dict, rnd: int, strength: list[dict] | None = None, db=None, next_tier
     tier = t.get("tier") or 1
     nxt = next_tier or tier + 1
     board = t.get("board") or t.get("end_board") or []
-    tribe, n_tribe = main_tribe(board, db)
+    # the build is what you shaped that turn (the board after it), not what you started it with
+    tribe, n_tribe = main_tribe(t.get("end_board") or board, db)
     hp = _hp(t)
     fight = combats.get(rnd) or {}
     cap = fight.get("damage_cap")
@@ -122,6 +140,7 @@ def at(g: dict, rnd: int, strength: list[dict] | None = None, db=None, next_tier
         "at_next": sum(1 for v in others.values() if (v.get("tier") or 1) >= nxt),
         "tribe": tribe, "n_tribe": n_tribe,
         "next_tier_cards": tier_cards(db, nxt, tribe) if tribe and nxt <= 7 else [],
+        "got": got_from_tier(t, nxt, db) if next_tier else [],
     }
 
 
@@ -184,7 +203,8 @@ def _weigh(s: dict) -> tuple[list[tuple[str, float]], list[tuple[str, float]]]:
             w = 2.0
         against.append((text, w))
     for text in level_support(s):
-        for_.append((text, 1.5 if ("of the stats of the boards" in text or "capped at" in text) else 1.0))
+        for_.append((text, 1.5 if ("of the stats of the boards" in text or "capped at" in text
+                               or "paid off at once" in text) else 1.0))
     return against, for_
 
 
@@ -227,6 +247,10 @@ def level_risks(s: dict) -> list[str]:
 def level_support(s: dict) -> list[str]:
     """What spoke for levelling, in the same order."""
     out = []
+    got = s.get("got") or []
+    if got:
+        names = ", ".join(f"{n}× {c}" if n > 1 else c for c, n in Counter(got).most_common())
+        out.append(f"the level paid off at once: you played {names} from tier {s['next_tier']}+ that turn")
     soft = _opp_soft(s)
     if soft:
         out.append(soft)

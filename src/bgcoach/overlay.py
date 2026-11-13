@@ -529,6 +529,9 @@ class Overlay:
         old = f" ({ago} rounds ago: too old to compare)" if ago > 3 else ""
         proj = f"\n≈ {last['projected']} stats now if they grew like an average player" if last.get("projected") else ""
         board = ", ".join(f"{self.n(m.get('card_id'))} {m.get('atk')}/{m.get('hp')}" for m in last.get("board") or [])
+        dt = last.get("deity")
+        if dt:  # not in their stats: a hidden minion that joins once enough of theirs die
+            board += f"\n+ hidden Deity {dt['atk']:,}/{dt['hp']:,} (joins after {dt['after']} of theirs die)"
         return (f"{who}\nLast seen R{last['round']}{old}: {last.get('tribe_text', '')} · {last['stats']} stats{ratio}"
                 f" · {last.get('kw_text', '')} · yours now {d.get('my_stats')}{proj}\n{board}")
 

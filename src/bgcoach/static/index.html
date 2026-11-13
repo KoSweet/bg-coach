@@ -412,10 +412,10 @@ async function openGame(file){
   show("game");
 }
 // ---------- game page building blocks
-const KIND_ICON = {counter:"⚠", turning:"↘", position:"⇅", level:"▲", fight:"⚔", rule:"📘", hero:"★"};
+const KIND_ICON = {counter:"⚠", turning:"↘", decider:"🏁", position:"⇅", level:"▲", fight:"⚔", rule:"📘", hero:"★"};
 function oneThingHtml(ms, placement){
   // a top-2 game with no real turning point: say so first; the small things come after
-  const real = ms.some(d => d.kind==="counter" || d.kind==="turning");
+  const real = ms.some(d => d.kind==="counter" || d.kind==="turning" || d.kind==="decider");
   if (placement && (placement === 1 || (placement <= 2 && !real)) && ms.length) return `<div class="card focus"><h3>Good game · ${placement===1?"you won":"2nd place"}</h3>
     <div class="big">${real ? "You won it. Worth a look, not a fix:" : "No turning point and no costly line to fix."}</div>
     <div class="muted" style="font-size:12px;margin:10px 0 2px">${real ? "CLOSE CALLS AND SMALL THINGS" : "SMALL THINGS"}</div>
@@ -498,20 +498,24 @@ function momentParts(d){
   }
   if (d.kind==="fight"){
     const bb = d.bb ? ` · Bob's Buddy ${Math.round(d.bb.loss)}% loss` : "";
-    const them = d.opp_stats!=null ? ` · their board ${d.opp_stats}${d.opp_ratio?` (${d.opp_ratio.toFixed(1)}× avg)`:""}` : "";
+    const them = d.opp_stats!=null ? ` · their board ${d.opp_stats.toLocaleString()}${d.opp_ratio?` (${d.opp_ratio.toFixed(1)}× the lobby)`:""}` : "";
     det.unshift(`That turn: ${esc(d.turn||"")}`);
     if (d.sim) det.push(`🎯 Simulated (matches the real fight): ${Math.round(d.sim.win)}% win · ${Math.round(d.sim.tie)}% tie · ${Math.round(d.sim.loss)}% loss`);
     if (d.sim_untrusted) det.push(`🎯 Not simulated: the simulator couldn't reproduce this fight (${esc(d.sim_untrusted)}), e.g. a hero power or trinket it doesn't know.`);
     if (d.no_counter) det.push(`🔍 Nothing in your shop at the end of that turn wins this fight (${d.no_counter.tried} lines simulated; best: ${nm(d.no_counter.best_buy)}, still ${Math.round(d.no_counter.best.loss)}% loss). It was decided before this turn: look at the rounds where your board fell behind.`);
     if (d.has_counter) det.push(`➡ There was a line that changes this fight: see the Counter moment for round ${d.round}.`);
     const label = d.highroll ? "Highroller" : "Fight";
-    return [label, `lost to ${tl(d.opp)}${them} · yours <b class="${d.ratio<0.9?'bad':''}">${Math.round(d.ratio*100)}%</b> of avg${bb}`, `−${d.damage} HP`, det];
+    return [label, `lost to ${tl(d.opp)}${them} · yours <b class="${d.ratio<0.9?'bad':''}">${Math.round(d.ratio*100)}%</b> of the boards you fought${bb}`, `−${d.damage} HP`, det];
   }
   if (d.kind==="counter"){
     if (d.board) det.push(`Board for that fight: ${(d.board||[]).map(icon).join("")}`);
     const risky = (d.risky||[]).length ? ` <span class="tag warn">risky</span>` : "";
     const below = d.hp_after!=null ? ` <span class="muted">(${d.hp_after<=0 ? "that fight knocked you out" : `you dropped to ${d.hp_after} HP`})</span>` : "";
     return ["Counter", `${esc(d.what)}${d.buy_kw&&d.buy_kw.length?` <span class="muted">(${esc(d.buy_kw.join(", "))})</span>`:""} ${icon(d.buy)} · loss chance <b>${Math.round(d.base.loss)}%</b> → ${num(Math.round(d.new.loss)+"%",true)}${below}${risky}`, d.impact||"", det];
+  }
+  if (d.kind==="decider"){
+    if (d.sim_blind) det.push(`🎯 Not simulated: the simulator can't see their Deity, so it would call this fight a win.`);
+    return [d.final ? "Deciding fight" : "Lost while ahead", esc(d.what), d.impact||"", det];
   }
   if (d.kind==="turning"){
     if (d.has_counter) det.push(`➡ A buy from your shop would have saved HP in this fight: see the Counter lesson for round ${d.round}.`);
@@ -743,13 +747,14 @@ on("next_opponent", d => {
   const seen = l ? `Last board you saw (round ${l.round}${ago>3?`, ${ago} rounds ago: too old to compare`:""}): <b class="${l.highroll?'bad':''}">${l.stats}</b> stats${l.ratio?`, ${l.ratio.toFixed(1)}× ${l.vs==="lobby"?"the boards in your lobby then":"the average for their hero"}${l.highroll?' <span class="tag err">highroll</span>':''}`:""} · ${esc(l.kw_text||"")} · your board now <b>${d.my_stats}</b>`
                  : `You haven't fought them yet.`;
   const proj = l && l.projected ? `<div style="margin-top:4px">If they grew like an average player on their hero since then: <b>≈ ${l.projected}</b> stats now vs your <b>${d.my_stats}</b>${l.projected > 1.3*d.my_stats ? ' <span class="tag err">likely bigger</span>' : l.projected*1.3 < d.my_stats ? ' <span class="tag">likely smaller</span>' : ''}.</div>` : "";
-  const theirs = l ? `<div style="margin-top:4px"><b>${esc(l.tribe_text||"")}</b></div><div class="row">${cardsImg(l.board)}</div>` : "";
+  const deity = l && l.deity ? `<div class="bad" style="margin-top:4px">+ a hidden Deity <b>${l.deity.atk.toLocaleString()}/${l.deity.hp.toLocaleString()}</b>, not in their stats: it joins the fight after ${l.deity.after} of their minions die. Don't put all your stats in one minion.</div>` : "";
+  const theirs = l ? `<div style="margin-top:4px"><b>${esc(l.tribe_text||"")}</b></div><div class="row">${cardsImg(l.board)}</div>${deity}` : "";
   $("#liveNext").innerHTML = `<div class="card"><h3>Next opponent ${icon(d.opp_hero)} ${nm(d.opp_hero)}</h3>
     <div>Tier ${d.opp_tier} · ${d.opp_hp} HP${d.opp_triples?` · ${d.opp_triples} triples`:""} · place ${d.opp_place}</div>
     ${(d.opp_recent||[]).length?`<div class="muted">Their last fights: ${d.opp_recent.map(x=>x.lost?`R${x.round} <span class="bad">−${x.lost}</span>`:`R${x.round} no loss`).join(" · ")}${d.opp_unhurt>=3?` (no loss in ${d.opp_unhurt} rounds)`:""}</div>`:""}${theirs}<div style="margin-top:4px">${seen}</div>${proj}<div id="liveOdds" class="muted" style="margin-top:4px"></div></div>`;
 });
 const moveWords = b => b.reverse ? "Reverse your board" : b.card_id ? `Move ${nm(b.card_id)} ${b.to===1?"first":b.to===b.of?"last":"to slot "+b.to}` : "Order: "+(b.order||[]).map(nm).join(", ");
-on("next_opponent_odds", d => { const o = $("#liveOdds"); if (o) o.innerHTML = `⚔ Your board now vs that board (simulated): <b>${Math.round(d.win)}%</b> win · ${Math.round(d.tie)}% tie · ${Math.round(d.loss)}% loss. They've grown since round ${d.seen_round}, so treat it as a floor for them.`
+on("next_opponent_odds", d => { const o = $("#liveOdds"); if (o && d.deity) { o.innerHTML = `⚔ No simulated odds: the simulator can't see their Deity, so it would call this fight for you.`; return; } if (o) o.innerHTML = `⚔ Your board now vs that board (simulated): <b>${Math.round(d.win)}%</b> win · ${Math.round(d.tie)}% tie · ${Math.round(d.loss)}% loss. They've grown since round ${d.seen_round}, so treat it as a floor for them.`
   + (d.best_order ? `<div style="margin-top:4px;color:var(--text)">⇄ <b>${moveWords(d.best_order)}</b>: ${Math.round(d.best_order.base_win)}% → <b>${Math.round(d.best_order.win)}%</b> win against that board (simulated, same minions).</div>` : ""); });
 on("checks", d => { const t=$("#checkTag"); t.textContent = `✓ ${d.ok} checks` + (d.failed?` · ✗ ${d.failed} failed`:""); t.className = "tag " + (d.failed?"err":""); });
 on("check_failed", d => showError(`Self-check failed in round ${d.round}: ${d.action} recorded but "${d.expected}" did not happen`, ()=>reportFor("error="+d.error_id)));

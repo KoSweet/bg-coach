@@ -129,7 +129,8 @@ and at low HP name the option that adds the most to your board now.
 | Kind | Shown when |
 |---|---|
 | Hero | the best hero offered averages clearly better (rule 2) than the one you took; with the reasons: top-4 rate, early/late fight win rate, how this lobby's tribes suit each hero, the hero power |
-| Fight / Highroller | you lost 7+ HP with a board below 90% of the boards you fought around that round, *or* to an opponent whose board was ≥ 1.5× the lobby then (yours included) and ≥ 1.25× yours ("highroller"), and Bob's Buddy didn't have you favoured. Shows their board, keywords, and when you had seen that player before |
+| Fight / Highroller | you lost 7+ HP with a board below 90% of the boards you fought around that round, *or* to an opponent whose board was ≥ 1.5× the lobby then and ≥ 1.25× yours ("highroller"), and Bob's Buddy didn't have you favoured. The lobby level is the median of at least three other opponents' boards (rounds ±1, widening to ±3), each scaled to that round by how boards grow (`lobby.GROWTH`); ghosts and your own board are left out, and it never drops below half the typical board on that round. Says their stats against yours first, then against the lobby |
+| Deciding fight | your last fight in a top-4 game, or a loss with ≥ 3× their stats (≥ 2× when their Deity or a secret was in it). Says what their board didn't show (a fed Deity: start and peak stats, how many deaths it waits for; secrets), what killed your biggest minion and whether a known card answers one big minion (Heroic Underdog → a small Taunt), and when you'd fought that player before. The simulator can't see the Deity, so those fights aren't simulated (live odds are skipped too) |
 | Counter | for a lost fight the simulator reproduces: a line with gold you had that turn and a minion still in your shop at the end of it (buy it *instead of* one you bought, *skip the level-up*, or spare gold + selling your weakest) changes the fight by ≥ 15 points (win + half the ties). Marked risky when it costs a tier or total stats. When no line works, the fight says so: it was decided earlier |
 | Position | the simulator finds an order of the *same minions* that wins ≥ 10 points more often |
 | Level | you levelled at 15 HP or less while your board was already below 85% of the average, then lost that fight |
@@ -142,7 +143,11 @@ situational payoff the note says so.
 **The lobby** (`lobby.py`) uses only what the game showed you: boards from your own fights and the
 leaderboard (tier, health, triples) recorded every round. Live, the game announces your next
 opponent during the shop phase; the app shows their last board you saw and, with the simulator,
-your current board's odds against it (a floor for them: they've grown since).
+your current board's odds against it (a floor for them: they've grown since). Every fight also
+records both sides' secrets, including the Old God "Deity" (`BG_OldGod`, a secret whose stats are
+`BACON_EVOLUTION_CARD_OVERWRITE_ATK/HEALTH` and whose countdown is `TAG_SCRIPT_DATA_NUM_1`; everyone has
+a 1/1 one until Aberrations feed it), its peak during the fight, and what killed your biggest minion
+(the attacker, or the defender from `PROPOSED_DEFENDER`).
 
 ### Synergy
 

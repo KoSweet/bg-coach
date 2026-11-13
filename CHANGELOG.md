@@ -6,6 +6,31 @@ All notable changes. Versions follow [semantic versioning](https://semver.org/).
 
 The point first, details on demand.
 
+### Added (13 Nov review of the day's games)
+- **Deciding fight:** the fight that ended a top-4 game, and any loss with 3× their stats (2× when
+  something was hidden), explained: their **Deity** (the hidden Old God, with its stats at the start
+  and its peak), secrets, what killed your biggest minion, the card that answers one giant minion
+  (Heroic Underdog: a small Taunt takes its hit), and when you'd fought that player before.
+- The parser records both sides' secrets and Deity at every fight and what killed your biggest
+  minion (parser version 5: the app re-parses your logs once).
+- Live: the next opponent's fed Deity is shown with their last board, and no simulated odds are
+  given against it (the simulator can't see it and would call a loss a win).
+- **Thin board early** (playbook): 2 minions on round 4 or 5, in a game where rounds 3–8 cost 25+ HP.
+- Turning points say how many capped losses you had left ("30 HP, losses capped at 15: two losses
+  from out").
+
+### Fixed
+- Highrolls were inflated late in the game ("4.3×" for a board 1.4× yours): the lobby level now
+  scales other rounds' boards to the round (late boards double every round), leaves out ghosts and
+  your own board, needs three boards, and never drops below half the typical board. Highroll lines
+  say their stats against yours first.
+- A level that bought the engine the same turn (2 Proud Privateers) was flagged as a mistake: what
+  you played from the new tier now counts for it, and the build is read from the board you ended
+  the turn with.
+- Gold left when the turn timer ran out is said as such; with a full board only spells are offered
+  as what the gold could have bought.
+- "Weak minion leading" only on close fights (not when one side had 1.5× the stats).
+
 ### Changed
 - **The one thing:** every game is reduced to its most important lesson plus a habit for the next
   game, ranked by kind (a concrete line you could have played, then minion order, a risky level-up,

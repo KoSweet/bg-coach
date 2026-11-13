@@ -37,10 +37,11 @@ def test_a_loss_turned_into_a_tie_reads_right():
 
 
 def test_highroll_fight_sentence_and_habit():
-    d = {"kind": "fight", "round": 9, "damage": 15, "opp": "X", "highroll": True, "opp_ratio": 3.2, "no_counter": {"tried": 9}}
+    d = {"kind": "fight", "round": 9, "damage": 15, "opp": "X", "highroll": True, "opp_ratio": 3.2,
+         "opp_stats": 1700, "mine": 520, "no_counter": {"tried": 9}}
     r = lessons.annotate([d], name)[0]
-    assert r["headline"] == ("Round 9: lost 15 HP to Xavius, a highroll (3.2× the other boards you fought then). "
-                             "Nothing in your shop that turn would have won it.")
+    assert r["headline"] == ("Round 9: lost 15 HP to Xavius, a highroll: 1,700 stats against your 520, 3.2× the other "
+                             "boards you fought then. Nothing in your shop that turn would have won it.")
     assert "next-opponent" in r["habit"]
 
 

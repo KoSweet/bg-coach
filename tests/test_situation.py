@@ -97,17 +97,23 @@ def test_live_odds_only_against_a_recent_board():
     assert web.Hub._their_board({"round": 7, "last_seen": seen}) is None
 
 
-def test_the_lobby_includes_you_and_one_weak_neighbour_cant_fake_a_highroll():
+def test_the_lobby_is_scaled_by_round_and_one_neighbour_or_a_ghost_cant_fake_a_highroll():
     from bgcoach import lobby
 
     def b(n):
         return [{"card_id": "X", "atk": n, "hp": 0}]
-    # round 11 from a real game: their 13,462 against your 6,070; the only other opponent nearby had 414
-    combats = [{"round": 10, "my_board": b(2620), "opp_board": b(414), "result": "WIN"},
-               {"round": 11, "my_board": b(6070), "opp_board": b(13462), "result": "LOSS"}]
-    assert lobby.lobby_level(combats, 11, skip_round=11) == 2620          # median of 414, 2620, 6070
-    fights = lobby.fights({"combats": combats})
-    assert fights[1]["vs"] == "lobby" and fights[1]["ratio"] == 5.14 and fights[1]["highroll"]
+    # round 10 from a real game: Patches 977 against your 704; the round-9 opponent was a ghost (47 stats)
+    combats = [{"round": 8, "my_board": b(212), "opp_board": b(226), "opp_hp_before": 28, "result": "LOSS"},
+               {"round": 9, "my_board": b(226), "opp_board": b(47), "opp_hp_before": 0, "result": "WIN"},
+               {"round": 10, "my_board": b(704), "opp_board": b(977), "opp_hp_before": 24, "result": "LOSS"}]
+    assert lobby.lobby_level(combats, 10, skip_round=10) is None          # one live neighbour isn't a lobby
+    assert not lobby.fights({"combats": combats})[2]["highroll"]
+    # boards from other rounds are grown to this round (late boards double every round), yours left out
+    combats = [{"round": r, "my_board": b(10), "opp_board": b(s), "opp_hp_before": 20, "result": "LOSS"}
+               for r, s in ((5, 46), (6, 77), (7, 300), (8, 245))]
+    assert lobby.lobby_level(combats, 7, skip_round=7) == 132             # 46, 77, 245 all scale to 132
+    f = lobby.fights({"combats": combats})[2]
+    assert f["ratio"] == 2.27 and f["highroll"]
     # a board well above the lobby but smaller than yours is not a highroll against you
-    combats[1]["opp_board"], combats[1]["my_board"] = b(5000), b(9000)
-    assert not lobby.fights({"combats": combats})[1]["highroll"]
+    combats[2]["my_board"] = b(400)
+    assert not lobby.fights({"combats": combats})[2]["highroll"]

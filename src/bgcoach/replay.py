@@ -46,7 +46,9 @@ BUTTONS = {
 # every archived log once, so older games get them too. 2 = lobby, end-of-turn shop.
 # 3 = locked hero offers; fights won in Duos (read from the enemy team's health).
 # 4 = the damage cap of each fight (5 / 10 / 15 early in the game, then off).
-PARSER_VERSION = 4
+# 5 = secrets and the Old God "Deity" of both sides at each fight; what killed your biggest minion.
+PARSER_VERSION = 5
+DEITY = "BG_OldGod"  # a hidden secret: joins the fight as a minion after N of its owner's minions die
 SHOP_TYPES = {"MINION", "BATTLEGROUND_SPELL", "SPELL"}
 KEYWORD_TAGS = ("TAUNT", "DIVINE_SHIELD", "REBORN", "WINDFURY", "VENOMOUS", "POISONOUS", "STEALTH", "CLEAVE")
 
@@ -238,6 +240,25 @@ class Replay:
             d["kw"] = kw  # keywords at this moment (incl. gained ones): needed to simulate combats
         return d
 
+    def _deity(self, e: Entity) -> dict:
+        atk = e.int("BACON_EVOLUTION_CARD_OVERWRITE_ATK") or e.int("TAG_SCRIPT_DATA_NUM_2")
+        hp = e.int("BACON_EVOLUTION_CARD_OVERWRITE_HEALTH") or e.int("TAG_SCRIPT_DATA_NUM_3")
+        return {"atk": atk, "hp": hp}
+
+    def _secrets(self, pid: int | None) -> list[dict]:
+        """Secrets in play at the start of a fight. The Old God "Deity" is one: its stats and how many of
+        its owner's minions must die before it joins (the countdown the game shows on it)."""
+        out = []
+        for e in self.ents.values():
+            if pid is None or e.int("CONTROLLER", -1) != pid or e.tag("ZONE") != "SECRET" or not e.card_id:
+                continue
+            d = {"id": e.id, "card_id": e.card_id}
+            if e.card_id == DEITY:
+                d.update(self._deity(e), deity=True, after=e.int("TAG_SCRIPT_DATA_NUM_1")
+                         or e.int("QUEST_PROGRESS_TOTAL"))
+            out.append(d)
+        return out
+
     def _other_pid(self) -> int | None:
         p = self.ents.get(self.g.other_entity) if self.g and self.g.other_entity else None
         return p.int("PLAYER_ID", -1) if p else None
@@ -404,6 +425,8 @@ class Replay:
             m = BLOCK_RE.match(body)
             if m and m.group(1) == "ATTACK":
                 self._combat_snapshot()
+                if self.cur_combat is not None:  # the defender follows as PROPOSED_DEFENDER on the game
+                    self.cur_combat["_attack"] = [self._ref(m.group(2)), None]
             return
         if body == "CREATE_GAME":
             self._new_game()
@@ -445,6 +468,9 @@ class Replay:
         if e.id == self.game_entity:
             if tag == "TURN":
                 self._on_turn(int(value))
+            elif tag == "PROPOSED_DEFENDER" and value.isdigit() and value != "0" \
+                    and self.cur_combat is not None and self.cur_combat.get("_attack"):
+                self.cur_combat["_attack"][1] = int(value)
             elif tag == "STATE" and value == "COMPLETE":
                 g.complete = True
                 self._complete_at = self.now
@@ -469,6 +495,18 @@ class Replay:
                     and self.turn % 2 == 1:  # announced during the shop phase, as the game shows it
                 self._emit("next_opponent", {"round": self._round(), "lobby_id": int(value)})
         c = self.cur_combat
+        if c is not None and e.card_id == DEITY and c.get("_deity") is not None and value.lstrip("-").isdigit():
+            d = c["_deity"].setdefault(e.id, {})  # it grows during the fight and is reset afterwards
+            if tag in ("BACON_EVOLUTION_CARD_OVERWRITE_ATK", "BACON_EVOLUTION_CARD_OVERWRITE_HEALTH"):
+                k = "atk" if tag.endswith("ATK") else "hp"
+                d[k] = max(d.get(k, 0), int(value))
+        if c is not None and tag == "ZONE" and value == "GRAVEYARD" and c.get("my_big") \
+                and e.id == c["my_big"].get("id") and "died" not in c["my_big"]:
+            att, dfn = c.get("_attack") or (None, None)
+            other = dfn if e.id == att else att if e.id == dfn else None
+            c["my_big"]["died"] = True
+            if other is not None and other in self.ents:
+                c["my_big"]["killed_by"] = self.ents[other].card_id
         if c is not None and e.id == c.get("_opp_hero_ent") and tag == "PREDAMAGE" and value.isdigit():
             c["_pre"] = max(c.get("_pre", 0), int(value))
         if e.id == g.me_entity and tag == "PLAYSTATE" and value in ("WON", "LOST", "CONCEDED"):
@@ -514,6 +552,11 @@ class Replay:
             return
         c["my_board"] = self.board()
         c["opp_board"] = self._zone(self._other_pid(), "PLAY")
+        c["my_secrets"], c["opp_secrets"] = self._secrets(self.g.me_player_id), self._secrets(self._other_pid())
+        c["_deity"] = {}
+        if c["my_board"]:
+            big = max(c["my_board"], key=lambda m: (m.get("atk") or 0) + max(0, m.get("hp") or 0))
+            c["my_big"] = {"id": big["id"], "card_id": big["card_id"], "atk": big["atk"], "hp": big["hp"]}
         oh = self._hero_of(self.g.other_entity)
         if oh:
             c["opp_hero"] = oh.card_id
@@ -530,6 +573,17 @@ class Replay:
         if c["hp_before"] is not None and hp_after is not None:
             taken = (c["hp_before"] + c["armor_before"]) - (hp_after + armor_after)
         c.pop("_opp_hero_ent", None)
+        c.pop("_attack", None)
+        if c.get("my_big"):
+            c["my_big"].pop("id", None)
+        during = c.pop("_deity", None) or {}
+        for side in ("my_secrets", "opp_secrets"):
+            for d in c.get(side) or []:
+                seen = during.get(d.pop("id", None)) or {}
+                if d.get("deity"):  # e.g. Faceless Converter's Deathrattle grows it mid-fight
+                    peak = (max(d["atk"], seen.get("atk", 0)), max(d["hp"], seen.get("hp", 0)))
+                    if peak != (d["atk"], d["hp"]):
+                        d["atk_peak"], d["hp_peak"] = peak
         dealt = c.pop("_pre", 0)  # hero hit is logged as PREDAMAGE on the opponent's combat hero
         before, opp = c.pop("_lobby", None) or {}, str(c.get("opp_lobby_id"))
         if not dealt and opp in before:

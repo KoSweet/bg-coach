@@ -146,7 +146,7 @@ class LiveWatcher(threading.Thread):
     @staticmethod
     def _next_opponent(rp, lobby_id: int) -> dict:
         """Who you fight next, as the game shows it: leaderboard entry + the last board you saw them with."""
-        from .lobby import keywords, lobby_level, stats
+        from .lobby import deity, keywords, lobby_level, stats
         lb = rp.lobby().get(str(lobby_id)) or {}
         seen = [c for c in rp.g.combats if c.get("opp_lobby_id") == lobby_id and c.get("opp_board")]
         last = seen[-1] if seen else None
@@ -166,7 +166,7 @@ class LiveWatcher(threading.Thread):
                 "opp_triples": lb.get("triples"), "opp_place": lb.get("place"),
                 "last_seen": {"round": last["round"], "stats": stats(last["opp_board"]), "kw": keywords(last["opp_board"]),
                               "lobby_level": lobby_level(rp.g.combats, last["round"], skip_round=last["round"]),
-                              "mine_then": stats(last.get("my_board")),
+                              "mine_then": stats(last.get("my_board")), "deity": deity(last),
                               "board": last["opp_board"], "hero": last.get("opp_hero")} if last else None,
                 "my_hero": rp.g.hero, "my_board": board, "my_stats": stats(board), "my_tier": rp.tier()}
 

@@ -52,10 +52,16 @@ RULES = {
                      "With one taunt, put it last (position 7): a cleave then hits one minion, not two."),
     "venom_biggest": ("Biggest minion into venom", "jeef_pos",
                       "Against venomous boards (often Murlocs), put your biggest minion last and spend venoms on small ones."),
+    "thin_board": ("Thin board early", "shady_basics",
+                   "Early, every empty slot is missing stats: fill the board before you roll or level past it "
+                   "(about one minion per round up to round 6)."),
     "dark_gifts_unused": ("Dark Gifts left unused", "dark_gifts",
                           "3 gold for a minion from a higher tier with a gift, up to 3 times a game (once per turn). "
                           "Unused ones are value you never got."),
 }
+
+
+THIN_COST = 25  # HP lost on rounds 3-8 before a thin early board is worth a lesson
 
 
 def _rule(rule_id: str, rnd: int, what: str, **extra) -> dict:
@@ -118,8 +124,11 @@ def _positioning(g: dict, combats: dict, db) -> list[dict]:
         mine, theirs = c.get("my_board") or [], c.get("opp_board") or []
         if c.get("result") != "LOSS" or len(mine) < 2:
             continue
-        # early: a low-attack minion leads while a much bigger hitter waits
-        if r <= 7 and not _fine_up_front(mine[0], db):
+        # early: a low-attack minion leads while a much bigger hitter waits. Only in a close fight: when
+        # one side had half again the stats, the order didn't decide it
+        a, b = sum(map(_size, mine)), sum(map(_size, theirs))
+        close = bool(a and b) and max(a, b) < 1.5 * min(a, b)
+        if r <= 7 and close and not _fine_up_front(mine[0], db):
             best = max(mine[1:], key=_atk)
             if _atk(best) >= 2 * max(1, _atk(mine[0])) and _atk(best) - _atk(mine[0]) >= 3:
                 out.append(_rule("early_order", r, f"Led with a {_atk(mine[0])}-attack minion while a "
@@ -161,12 +170,28 @@ def _short_rolls(turns: dict) -> list[dict]:
     return out
 
 
+def _timer_ran_out(t: dict, c: dict | None, within: float = 3.0) -> bool:
+    """The last click came seconds before the fight started: the turn ended on the clock."""
+    import datetime as dt
+    acts = [a for a in t.get("actions") or [] if a.get("t")]
+    if not acts or not (c or {}).get("t"):
+        return False
+    try:
+        gap = (dt.datetime.fromisoformat(c["t"]) - dt.datetime.fromisoformat(acts[-1]["t"])).total_seconds()
+    except ValueError:
+        return False
+    return gap <= within
+
+
 def _affordable(t: dict, db) -> list[str]:
     """Cards still in the shop when the turn ended that the leftover gold could buy (minions cost 3)."""
     gold = t.get("gold_end") or 0
+    full = len(t.get("end_board") or []) >= 7  # a minion would have needed a sell first
     out = []
     for s in t.get("end_shop") or []:
         c = db.get(s.get("card_id")) if db else {}
+        if full and c.get("type") != "BATTLEGROUND_SPELL":
+            continue
         cost = c.get("cost") if c.get("type") == "BATTLEGROUND_SPELL" else 3
         if cost is not None and cost <= gold and s.get("card_id"):
             out.append((db.name(s["card_id"]) if db else s["card_id"]) + f" ({cost}g)")
@@ -198,6 +223,16 @@ def check(g: dict, db=None, strength: list[dict] | None = None) -> list[dict]:
     t6 = turns.get(6)
     if t6 and (t6.get("tier") or 1) < 3 and len(turns) >= 6:
         out.append(_rule("tier3_turn5", 5, f"Still on tier {t6.get('tier')} when turn 6 started.", weight=0.3))
+
+    # a short board on rounds 4-6 that lost, in a game where those early rounds cost a lot (one minion on
+    # round 3 after levelling is normal; a thin board that kept losing is the leak)
+    lost = sum(c.get("damage_taken") or 0 for r, c in combats.items() if 3 <= r <= 8 and c.get("result") == "LOSS")
+    thin = [(r, len(c.get("my_board") or []), c.get("damage_taken")) for r, c in sorted(combats.items())
+            if 4 <= r <= 6 and c.get("result") == "LOSS" and 0 < len(c.get("my_board") or []) <= r - 2]
+    if thin and lost >= THIN_COST:
+        r, n, dmg = thin[0]
+        out.append(_rule("thin_board", r, f"{n} minion{'s' if n != 1 else ''} on the board on round {r}, lost {dmg}. "
+                                          f"Rounds 3–8 cost you {lost} HP in all.", weight=0.2))
 
     for r, t in turns.items():
         acts = t.get("actions") or []
@@ -245,6 +280,13 @@ def check(g: dict, db=None, strength: list[dict] | None = None) -> list[dict]:
     last_round = max(turns) if turns else 0
     left = [(r, t["gold_end"]) for r, t in sorted(turns.items())
             if 3 <= r < last_round and r not in rolled and isinstance(t.get("gold_end"), int) and t["gold_end"] >= 2]
+    timed_out = [(r, gold) for r, gold in left if _timer_ran_out(turns[r], combats.get(r))]
+    if timed_out:  # still clicking when the fight started: the clock, not a choice
+        out.append(_rule("gold_unspent", timed_out[0][0], "The turn timer ran out with " + ", ".join(
+            f"{gold} gold left on round {r}" for r, gold in timed_out) + ": you were still clicking when the fight "
+            "started. Long turns cost gold; plan the order (sell, buy, play, spells) before you start.",
+            weight=0.05 * sum(gold for _, gold in timed_out)))
+    left = [x for x in left if x not in timed_out]
     if left:
         worst = max(left, key=lambda x: x[1])[0]
         could = _affordable(turns[worst], db)

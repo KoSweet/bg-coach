@@ -9,7 +9,7 @@ a fight you lost (a diagnosis, not an action) comes last.
 """
 from __future__ import annotations
 
-PRIORITY = {"counter": 0, "turning": 1, "position": 2, "level": 3, "hero": 4, "rule": 5, "fight": 6}
+PRIORITY = {"counter": 0, "turning": 1, "decider": 1, "position": 2, "level": 3, "hero": 4, "rule": 5, "fight": 6}
 
 HABITS = {
     "counter:skip_level": "Before levelling, ask: if I lose this fight, do I drop below 15 HP? If yes, buy the minion "
@@ -32,7 +32,7 @@ def size(d: dict) -> float:
     k = d["kind"]
     if k in ("counter", "position"):
         return d.get("saved_hp") or 0
-    if k in ("fight", "level", "turning"):
+    if k in ("fight", "level", "turning", "decider"):
         return d.get("damage") or 0
     return (d.get("diff") or 0) * 100
 
@@ -42,7 +42,7 @@ def impact(d: dict) -> str:
     k = d["kind"]
     if k in ("counter", "position"):
         return f"~{size(d):.0f} HP saved"  # expected: damage taken × how much less likely the loss was
-    if k in ("fight", "level", "turning"):
+    if k in ("fight", "level", "turning", "decider"):
         return f"{d.get('damage') or 0} HP"
     if k in ("hero", "buy", "pick"):
         return f"{d.get('diff') or 0:.2f} places"
@@ -51,7 +51,7 @@ def impact(d: dict) -> str:
 
 def habit(d: dict) -> str | None:
     k = d["kind"]
-    if k == "turning":
+    if k in ("turning", "decider"):
         return d.get("habit")
     if k == "counter":
         return HABITS.get(f"counter:{d.get('line_kind')}")
@@ -81,7 +81,7 @@ def headline(d: dict, name) -> str:
     if k == "position":
         return (f"Round {r}: you had seen this board on round {d.get('seen_round', '?')}; the same minions in another "
                 f"order win {d['best_win']:.0f}% instead of {d['base_win']:.0f}%, about {d.get('saved_hp', 0):.0f} HP saved.")
-    if k == "turning":
+    if k in ("turning", "decider"):
         return d.get("what", "")
     if k == "level":
         return f"Round {r}: {d.get('calc', '')}"
@@ -92,8 +92,9 @@ def headline(d: dict, name) -> str:
         return f"Round {r}: {d.get('title')}. {d.get('what')}"
     if k == "fight":
         s = f"Round {r}: lost {d.get('damage')} HP to {name(d.get('opp'))}"
-        if d.get("highroll") and d.get("opp_ratio"):
-            s += f", a highroll ({d['opp_ratio']:.1f}× the other boards you fought then)"
+        if d.get("highroll") and d.get("opp_ratio") and d.get("opp_stats") is not None:
+            s += (f", a highroll: {d['opp_stats']:,} stats against your {d.get('mine') or 0:,}, "
+                  f"{d['opp_ratio']:.1f}× the other boards you fought then")
         if d.get("no_counter"):
             s += ". Nothing in your shop that turn would have won it"
         return s + "."
