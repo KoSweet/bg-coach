@@ -141,7 +141,7 @@ def game_analysis(g: dict, bracket: int) -> dict:
     for c in combats:
         mine = _stats(c.get("my_board"))
         ref = hmeta["warband"].get(c["round"]) if hmeta else None
-        h2h = lobby.head_to_head(combats, c["round"] - 1, c["round"] + 1)
+        h2h = lobby.head_to_head(combats, c["round"] - 1, c["round"])  # never the round after: that is hindsight
         hero_ratio = round(mine / ref, 2) if ref else None
         strength.append({"round": c["round"], "mine": mine, "meta": ref,
                          "lobby": lobby.lobby_level(combats, c["round"]),

@@ -29,6 +29,7 @@ The point first, details on demand.
   players on tier 6, 12 and 8 rolls on tier 5, then a 15-damage loss).
 
 ### Fixed
+- "Your board vs the boards you fought" used the next round (hindsight) and counted ghosts: a round-9 ghost with 30 stats made a 139 v 231 loss read as 162% of the lobby, so a level at 16 HP that dropped you to 1 was judged fair (Denathrius, 7th) and three 7th places had no lesson. Now rounds r−1..r, ghosts left out, each round scaled to the same point in the game. Ghost fights are never an "upset".
 - Duos: two buys/sells were reported as parser errors (17 Nov R8, and one on 30 Jun): the game
   re-sent its options before the action resolved; checks now wait for the action's own block.
 - A game cut by a crash or reconnect took its in-progress standing as the result (13 Nov: the first

@@ -187,3 +187,10 @@ def test_duos_health_is_the_teams():
          "two losses from out.")
     assert decisions.team_words(t) == ("Round 8: your team dropped from 19 to 4 HP, below 15. From round 7 your team "
                                        "was on 20 HP with losses capped at 15: two losses from out.")
+
+
+def test_a_ghost_fight_is_never_an_upset():
+    # Rat King, 18 Nov R9: "lost to Kel'Thuzad with 280 stats against their 52": a ghost's logged board isn't real
+    c = {"round": 9, "result": "LOSS", "damage_taken": 8, "opp_hero": "KT", "opp_hp_before": 0,
+         "my_board": b((140, 140)), "opp_board": b((26, 26))}
+    assert decisions.deciding_fights({"placement": 7, "combats": [c]}, [], DB()) == []

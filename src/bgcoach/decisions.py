@@ -210,7 +210,10 @@ def deciding_fights(g: dict, opponents: list[dict] | None, db) -> list[dict]:
     for c in combats:
         if c.get("result") != "LOSS":
             continue
+        if c.get("opp_hp_before") is not None and c["opp_hp_before"] <= 0 and c is not combats[-1]:
+            continue  # a ghost (Kel'Thuzad): the board the log shows for it isn't the one that fought
         mine, theirs = stats(c.get("my_board")), stats(c.get("opp_board"))
+        ghost = c.get("opp_hp_before") is not None and c["opp_hp_before"] <= 0
         final = c is combats[-1] and (g.get("placement") or 9) <= top
         r, opp = c["round"], c.get("opp_hero")
         hidden = hidden_strength(c, db)
@@ -218,7 +221,7 @@ def deciding_fights(g: dict, opponents: list[dict] | None, db) -> list[dict]:
         # early fights are decided by keywords more than stats: twice their stats isn't strange there,
         # three times is; with something hidden on their side, twice is enough; ahead at all when their
         # Deity was a quarter of your board's size
-        upset = theirs > 0 and (c.get("damage_taken") or 0) >= 7 and (
+        upset = not ghost and theirs > 0 and (c.get("damage_taken") or 0) >= 7 and (
             mine >= UPSET * theirs or (hidden and mine >= UPSET_HIDDEN * theirs)
             or (dt is not None and mine >= theirs and dt["atk"] + dt["hp"] >= DEITY_SHARE * mine))
         if not (final or upset):
@@ -248,7 +251,7 @@ def deciding_fights(g: dict, opponents: list[dict] | None, db) -> list[dict]:
                 why.append(line)
             if answer:
                 habit = f"Against {killer.removesuffix(' (venomous)')}: {answer}."
-        ahead = theirs > 0 and mine >= AHEAD * theirs
+        ahead = not ghost and theirs > 0 and mine >= AHEAD * theirs
         close = theirs > 0 and mine >= CLOSE * theirs  # far behind, the card that killed your best minion isn't why
         if final and not (upset or hidden or ahead or (answer and close)):
             continue  # a last fight lost while behind: the turning point tells that game, the stats add nothing

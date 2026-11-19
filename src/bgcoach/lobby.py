@@ -64,13 +64,19 @@ def describe_tribes(tr: list[list]) -> str:
 
 
 def head_to_head(combats: list[dict], lo: int, hi: int) -> float | None:
-    """Your board ÷ theirs, summed over your fights on rounds lo..hi: like for like, round by round
-    (1.0 = even with the boards you were fighting)."""
-    mine = opp = 0
+    """Your board ÷ theirs over your fights on rounds lo..hi (1.0 = even with the boards you were fighting).
+    Ghosts don't count (a dead player's board isn't the lobby), and each round is scaled to round `hi`
+    so the latest round doesn't outweigh the others just because boards double every round (Denathrius,
+    19 Nov: a round-9 ghost with 30 stats made a 139 v 231 loss read as "162% of the lobby")."""
+    mine = opp = 0.0
     for c in combats or []:
-        if lo <= c["round"] <= hi and c.get("my_board") and c.get("opp_board"):
-            mine += stats(c["my_board"])
-            opp += stats(c["opp_board"])
+        if not (lo <= c["round"] <= hi and c.get("my_board") and c.get("opp_board")):
+            continue
+        if c.get("opp_hp_before") is not None and c["opp_hp_before"] <= 0:
+            continue
+        k = _growth(hi) / _growth(c["round"])
+        mine += stats(c["my_board"]) * k
+        opp += stats(c["opp_board"]) * k
     return round(mine / opp, 2) if opp else None
 
 
