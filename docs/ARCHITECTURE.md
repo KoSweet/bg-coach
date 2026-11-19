@@ -97,7 +97,9 @@ Things learned the hard way, each covered by a test:
 ### Self-checks
 
 Every recorded buy, sell, level, play, cast and refresh registers the effect it must have on the
-game (gold spent, card moved, tier changed…), verified when the next options arrive. A failure
+game (gold spent, card moved, tier changed…), verified when the next options arrive after the
+action's own PLAY block has started (the game can re-send its options before a choice resolves:
+Duos does when the team's health changes). A failure
 means the parser recorded something the game didn't do, and becomes an error with the log line.
 Clicks that land just as the turn timer ends are real but have no effect; they are marked
 `applied: false`. The overlay shows the running count while you play.
@@ -128,9 +130,9 @@ and at low HP name the option that adds the most to your board now.
 
 | Kind | Shown when |
 |---|---|
-| Hero | the best hero offered averages clearly better (rule 2) than the one you took; with the reasons: top-4 rate, early/late fight win rate, how this lobby's tribes suit each hero, the hero power |
+| Hero | the best hero offered averages clearly better (rule 2) than the one you took, in a game you didn't finish 1st or 2nd; with the reasons: top-4 rate, early/late fight win rate, how this lobby's tribes suit each hero, the hero power |
 | Fight / Highroller | you lost 7+ HP with a board below 90% of the boards you fought around that round, *or* to an opponent whose board was ≥ 1.5× the lobby then and ≥ 1.25× yours ("highroller"), and Bob's Buddy didn't have you favoured. The lobby level is the median of at least three other opponents' boards (rounds ±1, widening to ±3), each scaled to that round by how boards grow (`lobby.GROWTH`); ghosts and your own board are left out, and it never drops below half the typical board on that round. Says their stats against yours first, then against the lobby |
-| Deciding fight | your last fight in a top-4 game, or a loss with ≥ 3× their stats (≥ 2× when their Deity or a secret was in it). Says what their board didn't show (a fed Deity: start and peak stats, how many deaths it waits for; secrets), what killed your biggest minion and whether a known card answers one big minion (Heroic Underdog → a small Taunt), and when you'd fought that player before. The simulator can't see the Deity, so those fights aren't simulated (live odds are skipped too) |
+| Deciding fight | a loss of 7+ HP with ≥ 3× their stats, ≥ 2× when their Deity or a secret was in it, or simply more stats when their Deity was a quarter of your board's size; and your last fight in a top-4 game (top 2 in Duos) when there is something to say (hidden strength, a known answer, or you had ≥ 1.25× their stats: then their keywords). Says what their board didn't show (a fed Deity: start and peak stats, how many deaths it waits for; secrets), what killed your biggest minion when that's news (their Deity itself; Heroic Underdog → a small Taunt; a venomous minion killing one that held 40%+ of your stats → a Divine Shield or a Taunt in front), and when you'd fought that player before. The simulator can't see the Deity, so those fights aren't simulated (live odds are skipped too) |
 | Counter | for a lost fight the simulator reproduces: a line with gold you had that turn and a minion still in your shop at the end of it (buy it *instead of* one you bought, *skip the level-up*, or spare gold + selling your weakest) changes the fight by ≥ 15 points (win + half the ties). Marked risky when it costs a tier or total stats. When no line works, the fight says so: it was decided earlier |
 | Position | the simulator finds an order of the *same minions* that wins ≥ 10 points more often |
 | Level | you levelled at 15 HP or less while your board was already below 85% of the average, then lost that fight |

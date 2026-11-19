@@ -6,6 +6,35 @@ All notable changes. Versions follow [semantic versioning](https://semver.org/).
 
 The point first, details on demand.
 
+### Changed (18 Nov review: 21 new games, every lesson measured on 90 solo games)
+- Lessons that fired as often in wins as in losses now fire only when the move cost something:
+  - **gold left**: from 3 gold, never on engine turns where sells and Bounties paid in what was left
+    (25 games → 3; it had averaged 2.5th place);
+  - **early rolls**: only rolls paid with minion money, in games where rounds 1–6 cost 10+ HP
+    (23 → 2; rolling the standard curve's spare gold costs nothing);
+  - **freeze**: only when you then paid to roll the frozen shop away (20 → 7);
+  - **Dark Gifts**: only when a turn ended with the 3 gold a gift costs;
+  - **hero pick**: not in a game you finished 1st or 2nd (now averages 5.6th where it fires).
+- **Deciding fight:** a loss where you had more stats and their Deity was a quarter of your
+  board's size is explained (Mutanus R8: 268 against 149, C'Thun 45/44 killed your Hellcaller),
+  and "killed by their Deity, C'Thun" is named. A venomous minion killing one that held 40%+ of
+  your stats names the fix. The last fight is only told when there's something to say (Duos: top
+  2), and "killed by" only when it's news.
+- A highroll you could only take (no level that turn, still above 15 HP) is no longer a lesson.
+- No turning point in a game you won; in Duos the health is said as your team's.
+
+### Added
+- **Rolled on when a level fit** (playbook): two turns in a row of 5+ rolls on one tier when the
+  game's own level weighing says a level fit (Drest'agath R10–11: 25 HP, 125% of the lobby, two
+  players on tier 6, 12 and 8 rolls on tier 5, then a 15-damage loss).
+
+### Fixed
+- Duos: two buys/sells were reported as parser errors (17 Nov R8, and one on 30 Jun): the game
+  re-sent its options before the action resolved; checks now wait for the action's own block.
+- A game cut by a crash or reconnect took its in-progress standing as the result (13 Nov: the first
+  half said 1st, HDT 2nd): no placement from a cut log while you were still in, HDT's when it has
+  one. Parser version 6: the app re-parses your logs once.
+
 ### Added (13 Nov review of the day's games)
 - **Deciding fight:** the fight that ended a top-4 game, and any loss with 3× their stats (2× when
   something was hidden), explained: their **Deity** (the hidden Old God, with its stats at the start

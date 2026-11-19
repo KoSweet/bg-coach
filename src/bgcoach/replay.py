@@ -47,7 +47,8 @@ BUTTONS = {
 # 3 = locked hero offers; fights won in Duos (read from the enemy team's health).
 # 4 = the damage cap of each fight (5 / 10 / 15 early in the game, then off).
 # 5 = secrets and the Old God "Deity" of both sides at each fight; what killed your biggest minion.
-PARSER_VERSION = 5
+# 6 = self-checks wait for the action to resolve (Duos re-sends options early); no placement from a cut log.
+PARSER_VERSION = 6
 DEITY = "BG_OldGod"  # a hidden secret: joins the fight as a minion after N of its owner's minions die
 SHOP_TYPES = {"MINION", "BATTLEGROUND_SPELL", "SPELL"}
 KEYWORD_TAGS = ("TAUNT", "DIVINE_SHIELD", "REBORN", "WINDFURY", "VENOMOUS", "POISONOUS", "STEALTH", "CLEAVE")
@@ -150,6 +151,9 @@ class Replay:
         self.my_hero_ids: set[int] = set()
         self.placement_locked = False
         self.pending_checks: list[tuple[dict, str, Callable[[], bool]]] = []
+        # The game can re-send its options before a chosen option resolves (Duos: the team's health changed,
+        # 17 Nov R8); checks wait until one of my PLAY blocks has started after the last SendOption.
+        self.awaiting_block = False
 
     # ------------------------------------------------------------ helpers
     def _ent(self, eid: int) -> Entity:
@@ -423,6 +427,10 @@ class Replay:
             return
         if body.startswith("BLOCK_START"):
             m = BLOCK_RE.match(body)
+            if m and m.group(1) == "PLAY" and self.awaiting_block and self.g is not None:
+                src = self._ref(m.group(2))
+                if src is not None and self._ent(src).int("CONTROLLER", -1) == self.g.me_player_id:
+                    self.awaiting_block = False
             if m and m.group(1) == "ATTACK":
                 self._combat_snapshot()
                 if self.cur_combat is not None:  # the defender follows as PROPOSED_DEFENDER on the game
@@ -617,6 +625,11 @@ class Replay:
         g.complete = complete
         g.end = g.end or self.now
         hero = self._my_hero()
+        if not complete and hero is not None and g.placement is not None \
+                and hero.int("HEALTH") + hero.int("ARMOR") - hero.int("DAMAGE") > 0:
+            # the log was cut while you were still in (a crash or reconnect: 13 Nov 17:13 the first half of a
+            # game said 1st, HDT 2nd): the leaderboard place was the standing then, not the result
+            g.placement = None
         if hero is not None and not g.hero:
             g.hero = hero.card_id
         if g.game_type and "BATTLEGROUNDS" in g.game_type and g.turns:
@@ -631,7 +644,8 @@ class Replay:
     # ------------------------------------------------------------ options
     def _options(self, body: str):
         if body.startswith("id="):
-            self._run_checks()
+            if not self.awaiting_block:  # else the options came back before my choice resolved: check later
+                self._run_checks()
             self.options = {}
             self._ensure_turn_snapshot()
             return
@@ -672,7 +686,10 @@ class Replay:
             if shop_now != self.last_shop:
                 action["shop"] = shop_now
                 self.last_shop = shop_now
+        n = len(self.pending_checks)
         self._add_check(action, opt, target)
+        if len(self.pending_checks) > n:
+            self.awaiting_block = True
         if self.cur_turn is not None:
             self.cur_turn["actions"].append(action)
         self._emit("action", action)
@@ -725,6 +742,7 @@ class Replay:
                 self.g.check_failures.append(fail)
                 self._emit("check_failed", fail)
         self.pending_checks = []
+        self.awaiting_block = False
         self._emit("checks", {"ok": self.g.checks_ok, "failed": len(self.g.check_failures)})
 
     def _classify(self, opt: dict, target: int, pos: int) -> dict | None:

@@ -93,3 +93,97 @@ def test_thin_board_early_only_when_the_early_game_leaked():
     assert rule["what"] == "2 minions on the board on round 4, lost 6. Rounds 3–8 cost you 31 HP in all."
     # the same board in a game where the early rounds were cheap: nothing to say
     assert "thin_board" not in [r["rule"] for r in playbook.check({"turns": t, "combats": c[:1]})]
+
+
+class DeityDB(DB):
+    cards: ClassVar[dict] = {**DB.cards,
+                             "CTHUN": {"name": "C'Thun", "text": "<b>Deity.</b> After this awakens, give this minion's "
+                                                                 "stats split amongst your other minions."},
+                             "CONV": {"name": "Faceless Converter", "text": "[x]<b>Deathrattle:</b> Give your "
+                                                                          "<b>Deity</b> +2/+1."},
+                             "SPIDER": {"name": "Venom Spider"}}
+
+    def name(self, cid):
+        return self.cards.get(cid, {}).get("name") or super().name(cid)
+
+
+def mutanus_r8():
+    """Mutanus, 16 Nov R8 (8th): 268 against 149 on the board, lost 14 to Zerek's C'Thun (37/37, 45/44 at its peak)."""
+    mine = b((54, 54), (21, 24), (22, 20), (14, 8), (13, 13), (6, 10), (6, 3))
+    mine[0]["card_id"] = "HELLCALLER"
+    c = {"round": 8, "result": "LOSS", "damage_taken": 14, "opp_hero": "ZEREK", "opp_lobby_id": 3, "my_board": mine,
+         "opp_board": b((12, 8), (12, 12), (11, 13), (11, 8), (5, 5), (17, 17), (6, 12)),
+         "opp_secrets": [{"card_id": "BG_OldGod", "deity": True, "atk": 37, "hp": 37, "after": 4,
+                          "atk_peak": 45, "hp_peak": 44}],
+         "my_big": {"card_id": "HELLCALLER", "atk": 54, "hp": 54, "died": True, "killed_by": "CTHUN"}}
+    later = {"round": 10, "result": "LOSS", "damage_taken": 15, "my_board": b((50, 50)), "opp_board": b((60, 60))}
+    return {"placement": 8, "combats": [c, later]}
+
+
+def test_a_deity_a_quarter_of_your_board_explains_a_loss_you_led():
+    d = decisions.deciding_fights(mutanus_r8(), [], DeityDB())
+    assert [x["round"] for x in d] == [8] and d[0]["upset"] and d[0]["sim_blind"]
+    assert d[0]["what"].startswith("Round 8: you lost to ZEREK with 268 stats against their 149 (1.8× theirs).")
+    assert "a hidden 37/37, 45/44 by the end of the fight" in d[0]["what"]
+    assert "was killed by their Deity, C'Thun." in d[0]["what"]
+    # a Deity at a tenth of your board doesn't explain a fight you led by 1.8×
+    g = mutanus_r8()
+    g["combats"][0]["opp_secrets"][0].update(atk=12, hp=12, atk_peak=None, hp_peak=None)
+    assert decisions.deciding_fights(g, [], DeityDB()) == []
+
+
+def test_a_minion_that_feeds_a_deity_is_not_called_the_deity():
+    killer, answer = decisions._killer({"my_board": b((10, 10))}, {"killed_by": "CONV", "atk": 10, "hp": 10}, DeityDB())
+    assert killer == "Faceless Converter" and answer is None
+
+
+def test_a_venomous_killer_of_a_stat_holder_names_the_fix():
+    mine = b((500, 500), (20, 20), (20, 20))
+    mine[0].update(card_id="BIG", kw=["DIVINE_SHIELD"])
+    c = {"my_board": mine, "opp_board": [{"card_id": "SPIDER", "atk": 3, "hp": 3, "kw": ["VENOMOUS"]}]}
+    killer, answer = decisions._killer(c, {"card_id": "BIG", "atk": 500, "hp": 500, "killed_by": "SPIDER"}, DeityDB())
+    assert killer == "Venom Spider (venomous)"
+    assert "one minion holding 93% of your stats" in answer and "a Taunt in front of it is what keeps it alive" in answer
+    assert "Divine Shield on it" not in answer  # its shield was already gone: the fix is the taunt
+
+
+def test_last_fight_lost_while_behind_with_nothing_hidden_says_nothing():
+    g, opps = final_vs_deity()
+    c = g["combats"][1]
+    c["opp_secrets"], c["my_board"] = [], b((1000, 500))  # 1,500 against their 7,506: the board was simply behind
+    c["my_big"]["killed_by"] = "PRIV"
+    assert decisions.deciding_fights(g, opps, DB()) == []
+
+
+def test_duos_last_fight_counts_only_in_the_top_half():
+    g, opps = final_vs_deity()
+    g["game_type"] = "GT_BATTLEGROUNDS_DUO"
+    g["combats"][1]["opp_secrets"] = []
+    g["combats"][1]["my_big"].pop("killed_by")
+    g["combats"][1]["my_board"] = b((5000, 5000))    # 10,000 against 7,506: ahead, not an upset
+    g["placement"] = 3                                # 3rd of 4 teams: not a top finish
+    assert decisions.deciding_fights(g, opps, DB()) == []
+    g["placement"] = 2
+    d = decisions.deciding_fights(g, opps, DB())
+    assert d and d[0]["final"] and "The stat count leaves out" not in d[0]["what"]  # their test board has no keywords
+
+
+def test_far_behind_the_venom_that_killed_your_best_minion_is_not_why_you_lost():
+    # 12 Nov: 5,705 against 39,097 in the last fight; Hackerfin (venomous) killed Snazzy Phantom
+    mine = b((1767, 1357), (900, 900), (400, 381))
+    mine[0]["card_id"] = "PHANTOM"
+    c = {"round": 15, "result": "LOSS", "damage_taken": 20, "opp_hero": "MECHANO", "my_board": mine,
+         "opp_board": [{"card_id": "SPIDER", "atk": 5000, "hp": 5000, "kw": ["VENOMOUS"]}, *b((14000, 15097))],
+         "my_big": {"card_id": "PHANTOM", "atk": 1767, "hp": 1357, "died": True, "killed_by": "SPIDER"}}
+    g = {"placement": 2, "combats": [c]}
+    assert decisions.deciding_fights(g, [], DeityDB()) == []
+    c["opp_board"] = [{"card_id": "SPIDER", "atk": 3000, "hp": 3000, "kw": ["VENOMOUS"]}]  # 5,705 against 6,000
+    d = decisions.deciding_fights(g, [], DeityDB())
+    assert d and "was killed by Venom Spider (venomous): a venomous minion kills any size" in d[0]["what"]
+
+
+def test_duos_health_is_the_teams():
+    t = ("Round 8: you dropped from 19 to 4 HP, below 15. From round 7 you were on 20 HP with losses capped at 15: "
+         "two losses from out.")
+    assert decisions.team_words(t) == ("Round 8: your team dropped from 19 to 4 HP, below 15. From round 7 your team "
+                                       "was on 20 HP with losses capped at 15: two losses from out.")

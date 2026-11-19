@@ -129,3 +129,20 @@ def test_one_lost_fight_is_not_a_turning_point():
                {"round": 8, "result": "LOSS", "hp_before": 20, "hp_after": 10}]
     turns = [{"round": r, "actions": [{"type": "LEVEL", "to_tier": 5}]} for r in (7, 8)]
     assert turning_point({"turns": turns, "combats": combats}, [{"round": 8, "ratio": 0.5}]) is None
+
+
+def test_no_hero_lesson_for_a_game_you_won():
+    from bgcoach import lessons
+    a = {"hero_pick": {"clear": True, "picked_avg": 4.4, "best": "B", "best_avg": 4.1, "loss": 0.3, "noise": 0.05},
+         "placement": 1}
+    assert lessons.hero_moment(a, "A") is None
+    a["placement"] = 5
+    assert lessons.hero_moment(a, "A")["better"] == "B"
+
+
+def test_a_highroll_you_could_only_take_has_no_habit():
+    from bgcoach import lessons
+    took = {"kind": "fight", "highroll": True, "turn": "2 buy(s)", "hp_before": 40, "damage": 10}
+    assert lessons.habit(took) is None
+    assert lessons.habit({**took, "turn": "you leveled up this turn, 1 buy(s)"}) == lessons.HABITS["fight:highroll"]
+    assert lessons.habit({**took, "hp_before": 20}) == lessons.HABITS["fight:highroll"]  # dropped to 10: protect HP

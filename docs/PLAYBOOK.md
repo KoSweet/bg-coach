@@ -41,7 +41,9 @@ From JeefHS, [Ranking ALL Heroes](https://www.youtube.com/watch?v=Y4sX0oqgWFE), 
 From the same two guides:
 
 - **checked** Spend all your gold every turn: a minion, a spell, the hero power, or at worst roll
-  the last gold away. Gold doesn't carry over.
+  the last gold away. Gold doesn't carry over. (Checked from 3 gold, or less when a card that cheap
+  was left in the shop; not on engine turns where sells and Bounties paid in at least what was left:
+  those end on the clock. Before that, the check fired mostly in your 1st and 2nd places.)
 - Economy minions (gold, cheap minions, coins) are worth buying early: they let you level and buy
   in the same turn later, and replace your early board faster once you reach tier 4.
 - A standard turn-by-turn plan: turn 1 buy; turn 2 level; turn 3 get two units out of 5 gold (an
@@ -55,6 +57,8 @@ From the same two guides:
 
 - **checked** Don't roll in the first five turns (at most once). Build the strongest board your gold
   buys; spend spare gold on tavern spells or levelling. Selling a token to double-buy is fine.
+  (Checked on rolls paid with gold that could have bought a minion, in games where rounds 1–6 cost
+  10+ HP: rolling the spare gold of the standard curve costs nothing.)
 - **checked** Level to tier 2 on turn 2 in 80–90% of games. Otherwise you buy 1-drops while others buy 2-drops.
 - **checked** Be on tier 3 by turn 5 at the latest.
 - Don't buy trash: a minion is worth buying for standalone tempo, a synergy pair/combo, or economy.
@@ -81,6 +85,9 @@ From the same two guides:
 - Second question: will I die if I level? At high HP, losing one fight is fine; at low HP, stabilize first.
 - Late in the game, small upgrades on your current tier stop being worth it: if nothing on this tier
   improves your board much, level.
+- **checked** Roll to stabilize, level when you're stable: two turns in a row of 5+ rolls on the same
+  tier, when the game's own level weighing says a level fit (board ahead of the lobby, HP safe,
+  players already a tier up).
 - **checked** Level before playing a triple reward: it discovers from one tier above your tavern.
 
 ## Rolling and freezing
@@ -91,6 +98,8 @@ From the same two guides:
 - **checked** If you can afford a useful buy, don't roll into something you'll only be able to
   freeze. Rolling your last 1–2 gold is fine: unspent gold is lost.
 - **checked** Freeze only what you'll actually buy next turn: a freeze costs you a fresh shop.
+  (Checked when you then paid to roll the frozen shop away: freezing on turn 1 and levelling on
+  turn 2 costs nothing.)
 
 ## Positioning
 
@@ -130,7 +139,8 @@ From [Positioning Explained by a PRO](https://www.youtube.com/watch?v=AsnJkEs988
 - Strong-player examples from recent games (JeefHS, dogdog): Harpy's Talons (divine shield +
   windfury) on a strong minion is excellent; Admiration (start of combat: gain the attack of the
   minion to its left) makes positioning matter, so chain Admiration minions behind your biggest attacker.
-- **checked** Don't end the game with gifts unused.
+- **checked** Don't end the game with gifts unused (checked when a turn ended with the 3 gold a gift
+  costs: forgotten, not traded for the board).
 
 ## End game
 

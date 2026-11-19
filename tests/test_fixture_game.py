@@ -70,6 +70,21 @@ def test_self_checks_and_no_errors(fixture_game):
     assert g.errors == []
 
 
+def test_options_resent_before_a_choice_resolves_are_not_a_failure():
+    """Duos, 17 Nov R8: the game sent a fresh options list 17 ms after a buy/sell, before it resolved
+    (the team's health had changed). The checks must wait for the action's own PLAY block."""
+    from bgcoach.pipeline import base_date_for, open_log
+    from bgcoach.replay import Replay
+    with open_log(FIXTURE_LOG) as fh:
+        lines = []
+        for line in fh:
+            lines.append(line)
+            if "GameState.SendOption()" in line:  # same timestamp, an options list nobody asked for
+                lines.append(line.split("GameState.")[0] + "GameState.DebugPrintOptions() - id=999\n")
+    g = Replay(base_date=base_date_for(FIXTURE_LOG)).feed_all(lines)[0]
+    assert g.checks_ok == 154 and g.check_failures == [] and g.not_applied == 0
+
+
 def test_events_stream():
     events = collections.Counter()
     parse(FIXTURE_LOG, on_event=lambda kind, data: events.update([kind]))
@@ -161,3 +176,14 @@ def test_duos_win_is_read_from_the_enemy_teams_health(monkeypatch):
     r._close_combat()
     c = r.g.combats[-1]
     assert c["result"] == "WIN" and c["damage_dealt"] == 9 and "_lobby" not in c
+
+
+def test_a_log_cut_while_you_are_still_in_gives_no_placement():
+    """13 Nov 17:13: Hearthstone restarted mid-game; the first half said 1st (the standing then), HDT said 2nd."""
+    from bgcoach.pipeline import base_date_for, open_log
+    from bgcoach.replay import Replay
+    with open_log(FIXTURE_LOG) as fh:
+        lines = fh.readlines()
+    cut = next(i for i, line in enumerate(lines) if "TURN value=17" in line)  # round 9 of 14, you still alive
+    g = Replay(base_date=base_date_for(FIXTURE_LOG)).feed_all(lines[:cut])[0]
+    assert not g.complete and g.placement is None

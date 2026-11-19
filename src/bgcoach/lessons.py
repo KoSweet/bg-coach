@@ -59,6 +59,10 @@ def habit(d: dict) -> str | None:
         from .playbook import RULES
         return RULES.get(d.get("rule"), (None, None, None))[2]
     if k == "fight":
+        levelled = "leveled up" in (d.get("turn") or "")
+        low = (d.get("hp_before") or 0) - (d.get("damage") or 0) < 15
+        if d.get("highroll") and not (levelled or low):
+            return None  # no level to skip and HP to spare: a highroll you just take, nothing to change
         return HABITS["fight:highroll"] if d.get("highroll") else HABITS["fight"]
     return HABITS.get(k)
 
@@ -115,8 +119,8 @@ def annotate(moments: list[dict], name) -> list[dict]:
 def hero_moment(a: dict, hero: str | None) -> dict | None:
     """The hero pick as a moment (only when another hero was clearly better)."""
     hp = a.get("hero_pick") or {}
-    if not hp.get("clear"):
-        return None
+    if not hp.get("clear") or (a.get("placement") or 9) <= 2:
+        return None  # a pro doesn't fault a hero that won the game over a fraction of a place on average
     return {"kind": "hero", "round": 0, "you": hero, "you_val": hp["picked_avg"], "better": hp["best"],
             "better_val": hp["best_avg"], "diff": hp["loss"], "why": hp.get("why") or [],
             "calc": f"Average placement at your MMR: {hp['picked_avg']} for your hero, {hp['best_avg']} for the best "

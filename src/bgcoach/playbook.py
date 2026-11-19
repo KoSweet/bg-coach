@@ -7,6 +7,8 @@ and you judge.
 """
 from __future__ import annotations
 
+import itertools
+
 from . import situation
 
 TRIPLE_REWARD = "TB_BaconShop_Triples_01"
@@ -55,6 +57,9 @@ RULES = {
     "thin_board": ("Thin board early", "shady_basics",
                    "Early, every empty slot is missing stats: fill the board before you roll or level past it "
                    "(about one minion per round up to round 6)."),
+    "stayed_rolling": ("Rolled on when a level fit", "jeef_level",
+                       "Roll to stabilize, level when you're stable: when your board is ahead of the boards you're "
+                       "fighting and the lobby has moved up a tier, the next tier is where the upgrades are."),
     "dark_gifts_unused": ("Dark Gifts left unused", "dark_gifts",
                           "3 gold for a minion from a higher tier with a gift, up to 3 times a game (once per turn). "
                           "Unused ones are value you never got."),
@@ -62,6 +67,16 @@ RULES = {
 
 
 THIN_COST = 25  # HP lost on rounds 3-8 before a thin early board is worth a lesson
+EARLY_COST = 10  # HP lost on rounds 1-6 before early rolls are worth a lesson (the rolls didn't buy tempo)
+
+
+def _gold_gained(t: dict) -> int:
+    """Gold that came in during the turn (sells, Bounties, gold minions): the rises between the gold
+    seen before each action and at the end. An engine turn ends on the clock with gold still coming in."""
+    seen = [a["gold"] for a in t.get("actions") or [] if isinstance(a.get("gold"), int)]
+    if isinstance(t.get("gold_end"), int):
+        seen.append(t["gold_end"])
+    return sum(max(0, b - a) for a, b in itertools.pairwise(seen))
 
 
 def _rule(rule_id: str, rnd: int, what: str, **extra) -> dict:
@@ -94,6 +109,21 @@ def _paid_refreshes(t: dict) -> int:
         if after is None or after < a["gold"]:
             n += 1
     return n
+
+
+def _tempo_rolls(t: dict) -> int:
+    """Paid rolls that came out of minion money: rolling the 1-2 gold that can't buy a minion anyway
+    (after the level, plus what sells paid in) costs no tempo. The standard curve (level on turn 4 with 1
+    gold to spare, two buys and a roll on turn 5) rolls twice in the first five turns and loses nothing."""
+    acts = t.get("actions") or []
+    level = 0
+    for i, a in enumerate(acts):
+        if a["type"] == "LEVEL" and isinstance(a.get("gold"), int):
+            after = next((x.get("gold") for x in acts[i + 1:] if x.get("gold") is not None), t.get("gold_end"))
+            if isinstance(after, int):
+                level += max(0, a["gold"] - after)
+    spendable = (t.get("gold") or 0) - level + _gold_gained(t)
+    return max(0, _paid_refreshes(t) - spendable % 3)
 
 
 def _atk(m: dict) -> int:
@@ -170,6 +200,48 @@ def _short_rolls(turns: dict) -> list[dict]:
     return out
 
 
+STAY_ROLLS = 5  # paid rolls on a turn spent on the old tier: gold that could have paid most of the level
+
+
+def _stayed_rolling(g: dict, turns: dict, combats: dict, strength, db) -> list[dict]:
+    """The mirror of a bad level: two turns in a row on the same tier (7+ round, 10+ gold, 5+ paid rolls
+    each, no level) when the game's own weighing says a level fit (situation.level_was_fair: board ahead,
+    HP safe, the lobby already up a tier). Drest'agath, 16 Nov: 25 HP, 125% of the lobby, two players on
+    tier 6, then 12 and 8 rolls on tier 5 and a 15-damage loss."""
+    if (g.get("placement") or 8) <= 2:
+        return []
+    streak = []
+    for r in sorted(turns):
+        t = turns[r]
+        acts = t.get("actions") or []
+        tier = t.get("tier") or 0
+        rolls = _paid_refreshes(t)
+        sit = None
+        if r >= 7 and tier and tier < 6 and (t.get("gold") or 0) >= 10 and rolls >= STAY_ROLLS \
+                and not any(a["type"] == "LEVEL" for a in acts):
+            sit = situation.at(g, r, strength, db, next_tier=tier + 1)
+        if sit and situation.level_was_fair(sit) and sit["at_next"] >= 1:
+            streak.append((r, rolls, sit))
+            continue
+        if len(streak) >= 2:
+            break
+        streak = []
+    if len(streak) < 2:
+        return []
+    r0, _, s0 = streak[0]
+    rounds = [r for r, _, _ in streak]
+    last = streak[-1][2]
+    lost = [(r, (combats.get(r) or {}).get("damage_taken")) for r in rounds
+            if (combats.get(r) or {}).get("result") == "LOSS"]
+    what = (f"Rounds {rounds[0]}–{rounds[-1]}: you stayed on tier {s0['tier']} and rolled "
+            f"{' and '.join(str(n) for _, n, _ in streak)} times. On round {r0}: {situation.join(situation.level_support(s0))}; "
+            f"by round {rounds[-1]}, {last['at_next']} of the {last['alive'] - 1} {situation._who(last)} were on tier "
+            f"{s0['tier'] + 1}.")
+    if lost:
+        what += " " + ", ".join(f"Round {r} cost you {d}" for r, d in lost) + "."
+    return [_rule("stayed_rolling", r0, what, weight=0.25, context=[situation.summary(s0)])]
+
+
 def _timer_ran_out(t: dict, c: dict | None, within: float = 3.0) -> bool:
     """The last click came seconds before the fight started: the turn ended on the clock."""
     import datetime as dt
@@ -207,12 +279,16 @@ def check(g: dict, db=None, strength: list[dict] | None = None) -> list[dict]:
     combats = {c["round"]: c for c in g.get("combats") or []}
     out = []
 
-    early = {r: _paid_refreshes(turns[r]) for r in range(1, 6) if r in turns}
-    if sum(early.values()) > 1:
+    # Rolling on turns 1-5 is a tempo leak only when the early game then cost HP: one or two rolls on
+    # turn 5 that found a pair are normal at high MMR (fired in 26% of games, average place = overall)
+    early = {r: _tempo_rolls(turns[r]) for r in range(1, 6) if r in turns}
+    early_lost = sum(c.get("damage_taken") or 0 for r, c in combats.items() if r <= 6 and c.get("result") == "LOSS")
+    if sum(early.values()) > 1 and early_lost >= EARLY_COST:
         rounds = ", ".join(f"R{r}×{n}" for r, n in early.items() if n)
         out.append(_rule("early_rolls", max(r for r, n in early.items() if n),
-                         f"{sum(early.values())} paid rolls in the first five turns ({rounds}).",
-                         weight=0.05 * sum(early.values())))
+                         f"{sum(early.values())} rolls in the first five turns paid with gold that could have bought "
+                         f"a minion ({rounds}), and rounds 1–6 cost you {early_lost} HP: the rolls didn't buy a "
+                         f"board that held.", weight=0.05 * sum(early.values())))
 
     t2 = turns.get(2)
     if t2 and t2.get("tier") == 1 and (turns.get(3) or {}).get("tier") == 1:
@@ -263,23 +339,33 @@ def check(g: dict, db=None, strength: list[dict] | None = None) -> list[dict]:
                                  f"Played the triple reward on tier {tier}, then levelled the same turn: it discovered "
                                  f"from tier {tier + 1} instead of tier {tier + 2}.", weight=0.25))
         if r + 1 in turns and frozen_at_end(t, turns[r + 1]):
+            # the freeze cost something only when you then paid to roll the frozen shop away: that roll
+            # bought the fresh shop the turn would have given you for free (freeze on 1, level on 2 = fine)
             frozen = {s.get("card_id") for s in t.get("end_shop") or []}
             nxt = turns[r + 1].get("actions") or []
-            bought = set()
-            for a in nxt:
+            bought, rolled = set(), False
+            for i, a in enumerate(nxt):
                 if a["type"] == "REFRESH":
+                    after = next((x.get("gold") for x in nxt[i + 1:] if x.get("gold") is not None),
+                                 turns[r + 1].get("gold_end"))
+                    rolled = a.get("gold") is not None and after is not None and after < a["gold"]
                     break
                 if a["type"] == "BUY":
                     bought.add(a.get("target"))
-            if frozen and not (frozen & bought):
-                out.append(_rule("freeze_unused", r, f"Froze {len(frozen)} cards on round {r}, then bought none of "
-                                                     f"them on round {r + 1}.", weight=0.05))
+            if frozen and rolled and not (frozen & bought):
+                out.append(_rule("freeze_unused", r, f"Froze {len(frozen)} cards on round {r}, then on round {r + 1} "
+                                                     f"paid to roll them away without buying any: that gold bought the "
+                                                     f"fresh shop the turn would have given you for free.", weight=0.05))
 
     short = _short_rolls(turns)
     rolled = {x["round"] for x in short}  # that gold is already told as a short roll: one cause, one lesson
     last_round = max(turns) if turns else 0
+    # Worth saying: enough gold for a minion (or a cheaper card still in the shop), on a turn where it
+    # didn't come in faster than you could spend it. Engine turns (sell loops, Bounties) end on the clock
+    # with gold to spare by nature: before this check the rule fired mostly in your wins (avg place 2.5).
     left = [(r, t["gold_end"]) for r, t in sorted(turns.items())
-            if 3 <= r < last_round and r not in rolled and isinstance(t.get("gold_end"), int) and t["gold_end"] >= 2]
+            if 3 <= r < last_round and r not in rolled and isinstance(t.get("gold_end"), int) and t["gold_end"] >= 2
+            and (t["gold_end"] >= 3 or _affordable(t, db)) and _gold_gained(t) < t["gold_end"]]
     timed_out = [(r, gold) for r, gold in left if _timer_ran_out(turns[r], combats.get(r))]
     if timed_out:  # still clicking when the fight started: the clock, not a choice
         out.append(_rule("gold_unspent", timed_out[0][0], "The turn timer ran out with " + ", ".join(
@@ -297,15 +383,17 @@ def check(g: dict, db=None, strength: list[dict] | None = None) -> list[dict]:
                          + " left over." + shop, weight=0.05 * sum(gold for _, gold in left)))
     out += _positioning(g, combats, db)
     out += short
+    out += _stayed_rolling(g, turns, combats, strength, db)
 
     gifts = [r for r, t in turns.items() for a in t.get("actions") or [] if a["type"] == "DARK_GIFT"]
     last = max(turns) if turns else 0
     season14 = str(g.get("start") or "") >= DARK_GIFTS_FROM or bool(gifts)
-    if season14 and last >= 9 and len(gifts) < 3 and (g.get("placement") or 8) >= 3:
+    spare = [r for r, t in sorted(turns.items()) if r >= 3 and r not in gifts and (t.get("gold_end") or 0) >= 3]
+    # forgotten, not traded away: a turn ended with the 3 gold a gift costs (else every gold went into the
+    # board, and dying on round 9 with one left is the result of the game, not its cause)
+    if season14 and last >= 9 and len(gifts) < 3 and (g.get("placement") or 8) >= 3 and spare:
         when = f" (used on rounds {', '.join(map(str, gifts))})" if gifts else ""
-        spare = [r for r, t in sorted(turns.items()) if r >= 3 and r not in gifts and (t.get("gold_end") or 0) >= 3]
-        room = (f" You ended round{'s' if len(spare) > 1 else ''} {', '.join(map(str, spare[:4]))} with 3+ gold: "
-                f"a Dark Gift fit there." if spare else "")
+        room = f" You ended round{'s' if len(spare) > 1 else ''} {', '.join(map(str, spare[:4]))} with 3+ gold: a Dark Gift fit there."
         out.append(_rule("dark_gifts_unused", last, f"Game ended on round {last} with {3 - len(gifts)} of 3 Dark Gifts "
                                                     f"unused{when}.{room}", weight=0.1 * (3 - len(gifts))))
     return out

@@ -142,6 +142,8 @@ def load_games() -> list[dict]:
     acct = my_account(games)
     for g in games:
         g["mine"] = g.get("account") == acct
+        if g.get("placement") is None and (g.get("hdt") or {}).get("placement"):  # the log was cut; HDT saw the end
+            g["placement"], g["placement_from"] = g["hdt"]["placement"], "hdt"
         g["issues"] = game_issues(g)
     return games
 
